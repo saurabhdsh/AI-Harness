@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY main.py ./
+COPY graph/ ./graph/
+COPY sample_repo/ ./sample_repo/
+
+ENV PORT=8090
+EXPOSE 8090
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8090"]

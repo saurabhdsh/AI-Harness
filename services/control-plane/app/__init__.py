@@ -1,0 +1,3 @@
+"""TCS AI Harness control-plane application package."""
+
+__version__ = "0.1.0"

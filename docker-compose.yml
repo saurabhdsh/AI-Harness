@@ -1,0 +1,147 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: harness
+      POSTGRES_PASSWORD: harness
+      POSTGRES_DB: harness
+    ports:
+      - "5432:5432"
+    volumes:
+      - harness_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U harness -d harness"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  langgraph-agent:
+    build:
+      context: ./examples/langgraph-agent
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  langgraph-openai-agent:
+    build:
+      context: ./examples/langgraph-openai-agent
+    ports:
+      - "8090:8090"
+    environment:
+      PORT: "8090"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2025-04-01-preview}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-${OPENAI_MODEL:-gpt-5-mini}}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  rest-agent:
+    build:
+      context: ./examples/rest-agent
+    ports:
+      - "8082:8082"
+    environment:
+      PORT: "8082"
+
+  qe-test-agent:
+    build:
+      context: ./examples/qe-test-agent
+    ports:
+      - "8083:8083"
+    environment:
+      PORT: "8083"
+
+  ams-incident-agent:
+    build:
+      context: ./examples/ams-incident-agent
+    ports:
+      - "8084:8084"
+    environment:
+      PORT: "8084"
+      REST_AGENT_URL: http://rest-agent:8082
+    depends_on:
+      - rest-agent
+
+  control-plane:
+    build:
+      context: ./services/control-plane
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://harness:harness@postgres:5432/harness
+      REDIS_URL: redis://redis:6379/0
+      AUTH_DEMO: "true"
+      AUTO_CREATE_TABLES: "true"
+      LANGGRAPH_AGENT_URL: http://langgraph-agent:8080
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
+      JWT_SECRET: local-dev-harness-jwt-secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      langgraph-agent:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  seed:
+    build:
+      context: ./services/control-plane
+    environment:
+      DATABASE_URL: postgresql+asyncpg://harness:harness@postgres:5432/harness
+      AUTH_DEMO: "true"
+      AUTO_CREATE_TABLES: "true"
+      LANGGRAPH_AGENT_URL: http://langgraph-agent:8080
+    depends_on:
+      control-plane:
+        condition: service_healthy
+      langgraph-agent:
+        condition: service_started
+    command: ["python", "-m", "app.seed"]
+    restart: "no"
+
+  mission-control:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./apps/mission-control:/app
+      - mission_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    depends_on:
+      control-plane:
+        condition: service_healthy
+
+volumes:
+  harness_pg:
+  mission_node_modules:

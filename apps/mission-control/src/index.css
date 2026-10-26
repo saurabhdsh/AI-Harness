@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Apple-style pure white palette */
+  --bg: #ffffff;
+  --bg-elev: #ffffff;
+  --bg-muted: #f5f5f7;
+  --bg-raised: #fafafa;
+  --line: #e8e8ed;
+  --line-soft: #f2f2f7;
+
+  /* Ink — sober neutral grey, never black */
+  --ink: #1d1d1f;
+  --ink-muted: #86868b;
+  --ink-faint: #aeaeb2;
+
+  /* Accent — restrained blue à la Apple */
+  --accent: #0071e3;
+  --accent-soft: rgba(0, 113, 227, 0.10);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+
+  color-scheme: light;
+}
+
+/* Force light always — no dark mode */
+html {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+}
+
+/* Remove italic everywhere */
+em,
+i {
+  font-style: normal;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Headings — SF Pro Display weight */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-style: normal;
+  letter-spacing: -0.022em;
+  color: var(--ink);
+}
+
+.font-serif {
+  /* Map serif to Inter heavy — Apple doesn't use display serifs in UI */
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+  font-weight: 600;
+  font-style: normal;
+  letter-spacing: -0.025em;
+}
+
+.app-bg {
+  background: var(--bg);
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--line);
+}
+
+.hairline {
+  border: 1px solid var(--line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-style: normal;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scrollbar — macOS thin style */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-faint);
+}
