@@ -8,19 +8,31 @@ cd "$ROOT"
 
 mkdir -p "$ROOT/data" "$ROOT/data/uploads" "$ROOT/data/logs" "$ROOT/data/pids"
 
-# Load root .env if present (never commit secrets)
-if [[ -f "$ROOT/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$ROOT/.env"
-  set +a
-fi
-if [[ -f "$ROOT/examples/langgraph-openai-agent/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$ROOT/examples/langgraph-openai-agent/.env"
-  set +a
-fi
+# Safe .env loader — never `source` (breaks on blank lines / Windows CRLF / comments)
+load_env_file() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  local line key val
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # strip CR from Windows-edited .env files
+    line="${line%$'\r'}"
+    # skip blanks and comments
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    # only KEY=VALUE
+    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      val="${BASH_REMATCH[2]}"
+      # strip optional surrounding quotes
+      if [[ "$val" =~ ^\"(.*)\"$ ]]; then val="${BASH_REMATCH[1]}"; fi
+      if [[ "$val" =~ ^\'(.*)\'$ ]]; then val="${BASH_REMATCH[1]}"; fi
+      export "$key=$val"
+    fi
+  done < "$f"
+}
+
+load_env_file "$ROOT/.env"
+load_env_file "$ROOT/examples/langgraph-openai-agent/.env"
 
 # SQLite — no Postgres
 export DATABASE_URL="${DATABASE_URL:-sqlite+aiosqlite:///${ROOT}/data/harness.db}"
