@@ -2,7 +2,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-for name in api agent ui; do
+for name in api agent domain-agents ui; do
   pidfile="$ROOT/data/pids/${name}.pid"
   if [[ -f "$pidfile" ]]; then
     pid="$(cat "$pidfile")"
@@ -14,7 +14,7 @@ for name in api agent ui; do
   fi
 done
 
-for port in 8000 8090 5173; do
+for port in 8000 8090 8091 5173; do
   if lsof -ti:"$port" >/dev/null 2>&1; then
     echo "Freeing port $port"
     lsof -ti:"$port" | xargs kill -9 2>/dev/null || true

@@ -1,4 +1,4 @@
-.PHONY: setup setup-local dev dev-local stop-local test lint migrate seed-demo smoke-test down logs build
+.PHONY: setup setup-local dev dev-local stop-local domain-agents register-domain-agents test lint migrate seed-demo smoke-test down logs build
 
 setup:
 	@echo "==> Installing control-plane deps"
@@ -7,6 +7,8 @@ setup:
 	cd apps/mission-control && npm install
 	@echo "==> Installing OpenAI/Azure LangGraph agent deps"
 	cd examples/langgraph-openai-agent && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+	@echo "==> Installing domain-agents (AD/AMS/QE) deps"
+	cd examples/domain-agents && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 	cp -n .env.example .env || true
 	@echo "Setup complete. With Docker: make dev  |  Without Docker: make dev-local"
 
@@ -27,6 +29,17 @@ dev-local:
 stop-local:
 	chmod +x scripts/stop-local.sh
 	./scripts/stop-local.sh
+
+# AD / AMS / QE domain LLM agents only (port 8091)
+domain-agents:
+	@if [ ! -d examples/domain-agents/.venv ]; then \
+	  cd examples/domain-agents && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt; \
+	fi
+	cd examples/domain-agents && . .venv/bin/activate && uvicorn main:app --host 127.0.0.1 --port 8091
+
+register-domain-agents:
+	chmod +x scripts/register-domain-agents.sh
+	./scripts/register-domain-agents.sh
 
 build:
 	docker compose build

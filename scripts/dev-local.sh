@@ -85,6 +85,15 @@ if [[ ! -d "$ROOT/examples/langgraph-openai-agent/.venv" ]]; then
   deactivate
 fi
 
+if [[ ! -d "$ROOT/examples/domain-agents/.venv" ]]; then
+  echo "==> Creating domain-agents venv"
+  python3 -m venv "$ROOT/examples/domain-agents/.venv"
+  # shellcheck disable=SC1091
+  source "$ROOT/examples/domain-agents/.venv/bin/activate"
+  pip install -q -r "$ROOT/examples/domain-agents/requirements.txt"
+  deactivate
+fi
+
 if [[ ! -d "$ROOT/apps/mission-control/node_modules" ]]; then
   echo "==> npm install (mission-control)"
   (cd "$ROOT/apps/mission-control" && npm install)
@@ -101,6 +110,7 @@ stop_port() {
 
 stop_port 8000
 stop_port 8090
+stop_port 8091
 stop_port 5173
 
 echo "==> Starting LangGraph OpenAI agent :8090"
@@ -111,6 +121,17 @@ echo "==> Starting LangGraph OpenAI agent :8090"
   exec uvicorn main:app --host 127.0.0.1 --port 8090
 ) >"$ROOT/data/logs/agent.log" 2>&1 &
 echo $! >"$ROOT/data/pids/agent.pid"
+
+echo "==> Starting domain-agents (AD/AMS/QE) :8091"
+(
+  cd "$ROOT/examples/domain-agents"
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+  export OPENAI_API_KEY OPENAI_MODEL
+  export AZURE_OPENAI_API_KEY AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_VERSION AZURE_OPENAI_DEPLOYMENT
+  exec uvicorn main:app --host 127.0.0.1 --port 8091
+) >"$ROOT/data/logs/domain-agents.log" 2>&1 &
+echo $! >"$ROOT/data/pids/domain-agents.pid"
 
 echo "==> Starting control-plane :8000"
 (
@@ -136,6 +157,7 @@ echo "==> Waiting for health…"
 ok=0
 for i in $(seq 1 40); do
   if curl -sf http://127.0.0.1:8090/health >/dev/null 2>&1 \
+    && curl -sf http://127.0.0.1:8091/health >/dev/null 2>&1 \
     && curl -sf http://127.0.0.1:8000/api/v1/health >/dev/null 2>&1; then
     ok=1
     break
@@ -146,15 +168,18 @@ if [[ "$ok" != "1" ]]; then
   echo "WARNING: services may still be starting — check data/logs/"
   tail -n 20 "$ROOT/data/logs/api.log" 2>/dev/null || true
   tail -n 20 "$ROOT/data/logs/agent.log" 2>/dev/null || true
+  tail -n 20 "$ROOT/data/logs/domain-agents.log" 2>/dev/null || true
 fi
 
 echo ""
 echo "AI Harness (no Docker) is up"
-echo "  UI:    http://127.0.0.1:5173"
-echo "  API:   http://127.0.0.1:8000/docs"
-echo "  Agent: http://127.0.0.1:8090/health"
-echo "  Login: admin@harness.local / harness-admin"
+echo "  UI:            http://127.0.0.1:5173"
+echo "  API:           http://127.0.0.1:8000/docs"
+echo "  Agent:         http://127.0.0.1:8090/health"
+echo "  Domain agents: http://127.0.0.1:8091/agents   (AD / AMS / QE)"
+echo "  Login:         admin@harness.local / harness-admin"
 echo ""
+echo "Register domain agents: make register-domain-agents"
 echo "Logs:  $ROOT/data/logs/"
 echo "Stop:  $ROOT/scripts/stop-local.sh"
 echo ""
