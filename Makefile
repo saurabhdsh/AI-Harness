@@ -52,3 +52,14 @@ lint:
 
 smoke-test:
 	./scripts/smoke-test.sh
+
+# Verify Azure/OpenAI keys from .env (same pattern as test_llm.py)
+test-llm:
+	@if [ -x examples/langgraph-openai-agent/.venv/bin/python ]; then \
+	  examples/langgraph-openai-agent/.venv/bin/python scripts/test_llm.py; \
+	elif [ -x services/control-plane/.venv/bin/python ]; then \
+	  services/control-plane/.venv/bin/pip install -q openai >/dev/null; \
+	  services/control-plane/.venv/bin/python scripts/test_llm.py; \
+	else \
+	  python3 -m pip install -q openai && python3 scripts/test_llm.py; \
+	fi
