@@ -45,7 +45,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
     metrics = str(payload.get("metrics") or SAMPLE["metrics"])
     severity_hint = str(payload.get("severity") or payload.get("severity_hint") or "unknown")
 
-    data = invoke_json(
+    data, usage = invoke_json(
         system=(
             "You are an AMS (Application Management Services) L2/L3 incident analyst. "
             "Return JSON with keys: "
@@ -91,6 +91,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             {"role": "assistant", "content": "RCA hypothesized", "node": "analyze"},
             {"role": "assistant", "content": "Runbook drafted", "node": "remediate"},
         ],
+        "usage": usage,
         "metadata": {
             "nodes": ["ingest", "analyze", "remediate"],
             "domain": "AMS",

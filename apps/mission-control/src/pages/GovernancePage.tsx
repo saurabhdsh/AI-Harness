@@ -30,6 +30,9 @@ export function GovernancePage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["approvals"] });
       void qc.invalidateQueries({ queryKey: ["mission-overview"] });
+      void qc.invalidateQueries({ queryKey: ["release-board"] });
+      void qc.invalidateQueries({ queryKey: ["release-promotions"] });
+      void qc.invalidateQueries({ queryKey: ["agents"] });
     },
   });
 

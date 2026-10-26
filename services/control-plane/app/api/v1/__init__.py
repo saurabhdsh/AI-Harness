@@ -14,6 +14,7 @@ from app.api.v1 import (
     health,
     mission,
     onboarding,
+    releases,
     traces,
 )
 
@@ -27,6 +28,7 @@ api_router.include_router(evaluations.router, prefix="/evaluations", tags=["eval
 api_router.include_router(executions.router, prefix="/executions", tags=["executions"])
 api_router.include_router(traces.router, prefix="/traces", tags=["traces"])
 api_router.include_router(approvals.router, prefix="/approvals", tags=["approvals"])
+api_router.include_router(releases.router, prefix="/releases", tags=["releases"])
 api_router.include_router(audit.router, prefix="/audit-events", tags=["audit"])
 api_router.include_router(mission.router, prefix="/mission", tags=["mission"])
 api_router.include_router(costs.router, prefix="/costs", tags=["costs"])

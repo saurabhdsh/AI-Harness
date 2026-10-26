@@ -41,7 +41,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         story = SAMPLE
     stack = str(payload.get("stack") or "Java Spring Boot + React Native + Postgres")
 
-    data = invoke_json(
+    data, usage = invoke_json(
         system=(
             "You are a senior Application Development (AD) solution designer. "
             "Return a single JSON object with keys: "
@@ -79,5 +79,6 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             {"role": "assistant", "content": "Design sketched", "node": "design"},
             {"role": "assistant", "content": "Risks captured", "node": "review"},
         ],
+        "usage": usage,
         "metadata": {"nodes": ["ingest", "design", "review"], "domain": "AD", **provider_meta()},
     }

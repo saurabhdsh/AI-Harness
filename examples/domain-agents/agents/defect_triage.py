@@ -40,7 +40,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         payload = {**SAMPLE, **payload}
         title = SAMPLE["title"]
 
-    data = invoke_json(
+    data, usage = invoke_json(
         system=(
             "You are a senior QE lead performing defect triage. "
             "Return JSON with keys: "
@@ -87,5 +87,6 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             {"role": "assistant", "content": "Severity assigned", "node": "classify"},
             {"role": "assistant", "content": "Actions proposed", "node": "advise"},
         ],
+        "usage": usage,
         "metadata": {"nodes": ["ingest", "classify", "advise"], "domain": "QE", **provider_meta()},
     }

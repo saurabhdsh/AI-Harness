@@ -93,12 +93,30 @@ async def invoke(body: InvokeBody) -> dict[str, Any]:
     meta = dict(result.get("metadata") or {})
     meta["latency_ms"] = latency_ms
     meta["run_id"] = str(uuid.uuid4())
-    logger.info("invoke done latency_ms=%s summary_len=%s", latency_ms, len(str((result.get("output") or {}).get("summary") or "")))
+    usage = result.get("usage") or {}
+    if not usage.get("input_tokens") and not usage.get("output_tokens"):
+        import json as _json
+
+        blob = _json.dumps(result.get("output") or {}, default=str)
+        est_out = max(80, len(blob) // 4)
+        est_in = max(60, est_out // 2)
+        usage = {
+            "input_tokens": est_in,
+            "output_tokens": est_out,
+            "total_tokens": est_in + est_out,
+            "estimated": True,
+        }
+    logger.info(
+        "invoke done latency_ms=%s tokens_in=%s tokens_out=%s",
+        latency_ms,
+        usage.get("input_tokens"),
+        usage.get("output_tokens"),
+    )
     return {
         "output": result.get("output") or {},
         "messages": result.get("messages") or [],
         "metadata": meta,
-        "usage": {},
+        "usage": usage,
         "run_id": meta["run_id"],
         "trace_id": meta["run_id"],
     }

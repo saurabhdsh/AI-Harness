@@ -1,4 +1,4 @@
-"""Shared JSON LLM invoke helper (Azure-safe)."""
+"""Shared JSON LLM invoke helper (Azure-safe) with usage capture."""
 
 from __future__ import annotations
 
@@ -30,7 +30,35 @@ def extract_json(text: str) -> dict[str, Any]:
     raise ValueError("LLM did not return parseable JSON")
 
 
-def invoke_json(system: str, user: str) -> dict[str, Any]:
+def _usage_from_response(resp: Any) -> dict[str, int]:
+    """Pull token counts from LangChain AIMessage metadata."""
+    usage: dict[str, int] = {}
+    meta = getattr(resp, "usage_metadata", None) or {}
+    if isinstance(meta, dict) and meta:
+        tin = meta.get("input_tokens") or meta.get("prompt_tokens") or 0
+        tout = meta.get("output_tokens") or meta.get("completion_tokens") or 0
+        total = meta.get("total_tokens") or (int(tin) + int(tout))
+        usage = {
+            "input_tokens": int(tin or 0),
+            "output_tokens": int(tout or 0),
+            "total_tokens": int(total or 0),
+        }
+    if not usage.get("input_tokens") and not usage.get("output_tokens"):
+        rm = getattr(resp, "response_metadata", None) or {}
+        tok = rm.get("token_usage") or rm.get("usage") or {}
+        if isinstance(tok, dict):
+            tin = tok.get("prompt_tokens") or tok.get("input_tokens") or 0
+            tout = tok.get("completion_tokens") or tok.get("output_tokens") or 0
+            usage = {
+                "input_tokens": int(tin or 0),
+                "output_tokens": int(tout or 0),
+                "total_tokens": int(tok.get("total_tokens") or (int(tin or 0) + int(tout or 0))),
+            }
+    return usage
+
+
+def invoke_json(system: str, user: str) -> tuple[dict[str, Any], dict[str, int]]:
+    """Return (parsed_json, usage). Usage may be empty if the provider omits it."""
     if not llm_configured():
         raise RuntimeError(
             "No LLM credentials — set AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT "
@@ -47,7 +75,7 @@ def invoke_json(system: str, user: str) -> dict[str, Any]:
                 ]
             )
             text = resp.content if isinstance(resp.content, str) else str(resp.content)
-            return extract_json(text)
+            return extract_json(text), _usage_from_response(resp)
         except Exception as exc:  # noqa: BLE001
             last_error = exc
     raise RuntimeError(f"LLM JSON invoke failed: {last_error}")

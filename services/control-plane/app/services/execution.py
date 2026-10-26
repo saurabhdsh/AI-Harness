@@ -98,10 +98,26 @@ async def invoke_agent(
         )
         db.add(trace)
 
-        # Record approximate cost (placeholder rate; real billing would use provider rates)
-        tin = response.token_input or 0
-        tout = response.token_output or 0
-        cost_usd = (tin * 0.000001) + (tout * 0.000002)
+        # Record cost from provider usage, or estimate from output when agents omit tokens
+        from app.services.costing import compute_cost_usd, resolve_tokens
+
+        tin, tout, estimated = resolve_tokens(
+            token_input=response.token_input,
+            token_output=response.token_output,
+            output_payload=response.output,
+        )
+        execution.token_input = tin
+        execution.token_output = tout
+        cost_usd = compute_cost_usd(tin, tout)
+        model_name = None
+        if isinstance(response.output, dict):
+            model_name = response.output.get("model")
+        if not model_name and isinstance(response.raw, dict):
+            raw_meta = response.raw.get("metadata")
+            if isinstance(raw_meta, dict):
+                model_name = raw_meta.get("model")
+        if not model_name:
+            model_name = (agent.metadata_ or {}).get("model")
         db.add(
             CostRecord(
                 tenant_id=tenant_id,
@@ -110,8 +126,14 @@ async def invoke_agent(
                 cost_usd=cost_usd,
                 token_input=tin,
                 token_output=tout,
-                model_name=(agent.metadata_ or {}).get("model"),
-                metadata_={"source": "execution"},
+                model_name=str(model_name) if model_name else None,
+                metadata_={
+                    "source": "execution",
+                    "rate_source": "placeholder",
+                    "tokens_estimated": estimated,
+                    "latency_ms": response.latency_ms,
+                    "note": "Estimated rates — not provider invoices",
+                },
             )
         )
     except UnsupportedOperationError:

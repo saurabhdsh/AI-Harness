@@ -114,6 +114,7 @@ async def update_agent(
     for key, value in updates.items():
         setattr(agent, key, value)
     await db.flush()
+    await db.refresh(agent)
     await record_audit(
         db,
         tenant_id=tenant_id,

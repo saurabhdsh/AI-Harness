@@ -40,7 +40,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
     sprint_name = str(payload.get("sprint") or "Sprint 14")
     team = str(payload.get("team") or "AD Squad Alpha")
 
-    data = invoke_json(
+    data, usage = invoke_json(
         system=(
             "You are an experienced AD Scrum Master / Tech Lead. "
             "Return JSON with keys: "
@@ -85,6 +85,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             {"role": "assistant", "content": "Capacity applied", "node": "capacity"},
             {"role": "assistant", "content": "Sprint committed", "node": "plan"},
         ],
+        "usage": usage,
         "metadata": {
             "nodes": ["ingest", "capacity", "plan"],
             "domain": "AD",

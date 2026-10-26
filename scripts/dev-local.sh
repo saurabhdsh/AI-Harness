@@ -34,8 +34,12 @@ load_env_file() {
 load_env_file "$ROOT/.env"
 load_env_file "$ROOT/examples/langgraph-openai-agent/.env"
 
-# SQLite — no Postgres
-export DATABASE_URL="${DATABASE_URL:-sqlite+aiosqlite:///${ROOT}/data/harness.db}"
+# SQLite — no Postgres.
+# Absolute path form is sqlite:////abs/path (FOUR slashes). Build carefully:
+# ROOT is /Users/... so strip the leading slash before joining or we get five.
+if [[ -z "${DATABASE_URL:-}" || "${DATABASE_URL}" == sqlite* ]]; then
+  export DATABASE_URL="sqlite+aiosqlite:////${ROOT#/}/data/harness.db"
+fi
 export AUTH_DEMO="${AUTH_DEMO:-true}"
 export AUTO_CREATE_TABLES="${AUTO_CREATE_TABLES:-true}"
 export CORS_ORIGINS="${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
@@ -113,45 +117,56 @@ stop_port 8090
 stop_port 8091
 stop_port 5173
 
+# Detach from the parent shell (nohup + disown) so IDE agent cleanup does not
+# tear down the stack when the starter command exits.
+_run_service() {
+  local name="$1" logfile="$2" pidfile="$3" workdir="$4"
+  shift 4
+  nohup bash -c "
+    cd \"$workdir\" || exit 1
+    if [[ -f .venv/bin/activate ]]; then source .venv/bin/activate; fi
+    exec $(printf '%q ' "$@")
+  " >"$logfile" 2>&1 &
+  local pid=$!
+  echo "$pid" >"$pidfile"
+  disown "$pid" 2>/dev/null || true
+  echo "    $name pid $pid"
+}
+
 echo "==> Starting LangGraph OpenAI agent :8090"
-(
-  cd "$ROOT/examples/langgraph-openai-agent"
-  # shellcheck disable=SC1091
-  source .venv/bin/activate
-  exec uvicorn main:app --host 127.0.0.1 --port 8090
-) >"$ROOT/data/logs/agent.log" 2>&1 &
-echo $! >"$ROOT/data/pids/agent.pid"
+_run_service agent "$ROOT/data/logs/agent.log" "$ROOT/data/pids/agent.pid" \
+  "$ROOT/examples/langgraph-openai-agent" \
+  uvicorn main:app --host 127.0.0.1 --port 8090
 
 echo "==> Starting domain-agents (AD/AMS/QE) :8091"
-(
-  cd "$ROOT/examples/domain-agents"
-  # shellcheck disable=SC1091
-  source .venv/bin/activate
-  export OPENAI_API_KEY OPENAI_MODEL
-  export AZURE_OPENAI_API_KEY AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_VERSION AZURE_OPENAI_DEPLOYMENT
-  exec uvicorn main:app --host 127.0.0.1 --port 8091
-) >"$ROOT/data/logs/domain-agents.log" 2>&1 &
-echo $! >"$ROOT/data/pids/domain-agents.pid"
+OPENAI_API_KEY="${OPENAI_API_KEY:-}" OPENAI_MODEL="${OPENAI_MODEL:-}" \
+AZURE_OPENAI_API_KEY="${AZURE_OPENAI_API_KEY:-}" \
+AZURE_OPENAI_ENDPOINT="${AZURE_OPENAI_ENDPOINT:-}" \
+AZURE_OPENAI_API_VERSION="${AZURE_OPENAI_API_VERSION:-}" \
+AZURE_OPENAI_DEPLOYMENT="${AZURE_OPENAI_DEPLOYMENT:-}" \
+_run_service domain-agents "$ROOT/data/logs/domain-agents.log" "$ROOT/data/pids/domain-agents.pid" \
+  "$ROOT/examples/domain-agents" \
+  uvicorn main:app --host 127.0.0.1 --port 8091
 
 echo "==> Starting control-plane :8000"
-(
-  cd "$ROOT/services/control-plane"
-  # shellcheck disable=SC1091
-  source .venv/bin/activate
-  export DATABASE_URL AUTH_DEMO AUTO_CREATE_TABLES CORS_ORIGINS LANGGRAPH_AGENT_URL
-  export HARNESS_PROJECT_ALLOWLIST HTTP_TIMEOUT_SECONDS
-  export OPENAI_API_KEY OPENAI_MODEL
-  export AZURE_OPENAI_API_KEY AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_VERSION AZURE_OPENAI_DEPLOYMENT
-  exec uvicorn app.main:app --host 127.0.0.1 --port 8000
-) >"$ROOT/data/logs/api.log" 2>&1 &
-echo $! >"$ROOT/data/pids/api.pid"
+DATABASE_URL="$DATABASE_URL" AUTH_DEMO="$AUTH_DEMO" AUTO_CREATE_TABLES="$AUTO_CREATE_TABLES" \
+CORS_ORIGINS="$CORS_ORIGINS" LANGGRAPH_AGENT_URL="$LANGGRAPH_AGENT_URL" \
+HARNESS_PROJECT_ALLOWLIST="${HARNESS_PROJECT_ALLOWLIST:-}" \
+HTTP_TIMEOUT_SECONDS="$HTTP_TIMEOUT_SECONDS" \
+OPENAI_API_KEY="${OPENAI_API_KEY:-}" OPENAI_MODEL="${OPENAI_MODEL:-}" \
+AZURE_OPENAI_API_KEY="${AZURE_OPENAI_API_KEY:-}" \
+AZURE_OPENAI_ENDPOINT="${AZURE_OPENAI_ENDPOINT:-}" \
+AZURE_OPENAI_API_VERSION="${AZURE_OPENAI_API_VERSION:-}" \
+AZURE_OPENAI_DEPLOYMENT="${AZURE_OPENAI_DEPLOYMENT:-}" \
+PYTHONPATH="$ROOT/services/control-plane" \
+_run_service api "$ROOT/data/logs/api.log" "$ROOT/data/pids/api.pid" \
+  "$ROOT/services/control-plane" \
+  uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 echo "==> Starting Mission Control UI :5173"
-(
-  cd "$ROOT/apps/mission-control"
-  exec npm run dev -- --host 127.0.0.1 --port 5173
-) >"$ROOT/data/logs/ui.log" 2>&1 &
-echo $! >"$ROOT/data/pids/ui.pid"
+_run_service ui "$ROOT/data/logs/ui.log" "$ROOT/data/pids/ui.pid" \
+  "$ROOT/apps/mission-control" \
+  npm run dev -- --host 127.0.0.1 --port 5173
 
 echo "==> Waiting for health…"
 ok=0

@@ -156,6 +156,10 @@ export type CostSummary = {
   total_token_input: number;
   total_token_output: number;
   records: number;
+  rate_note?: string;
+  budgets_over_threshold?: number;
+  active_budgets?: number;
+  repaired_records?: number;
 };
 
 export type CostRecord = {
@@ -169,6 +173,7 @@ export type CostRecord = {
   model_name: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
+  agent_name?: string | null;
 };
 
 export type Budget = {
@@ -184,6 +189,22 @@ export type Budget = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  computed_spent_usd?: number;
+  pct_used?: number;
+  remaining_usd?: number;
+  over_threshold?: boolean;
+  period_start?: string | null;
+  agent_name?: string | null;
+};
+
+export type BudgetCreate = {
+  name: string;
+  scope: "tenant" | "agent";
+  agent_id?: string | null;
+  limit_usd: number;
+  period: "daily" | "weekly" | "monthly" | "all_time";
+  alert_threshold?: number;
+  is_active?: boolean;
 };
 
 export type Approval = {
@@ -226,4 +247,62 @@ export type Connector = {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+};
+
+export type ReleaseGate = {
+  id: string;
+  type: string;
+  required: boolean;
+  status: string;
+  detail?: string | null;
+};
+
+export type ReleaseTrain = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  stages: Array<{ env: string; gates?: string[]; approval_for_risk?: string[] }>;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Promotion = {
+  id: string;
+  tenant_id: string;
+  agent_id: string;
+  train_id: string | null;
+  from_env: string;
+  to_env: string;
+  status: string;
+  gates: ReleaseGate[];
+  justification: string | null;
+  error: string | null;
+  requested_by: string | null;
+  approval_id: string | null;
+  completed_at: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  agent_name?: string | null;
+  train_name?: string | null;
+};
+
+export type ReleaseBoardAgent = {
+  id: string;
+  name: string;
+  domain: string | null;
+  lifecycle_state: string;
+  evaluation_status: string;
+  risk_class: string;
+  health_status: string;
+};
+
+export type ReleaseBoard = {
+  environments: Array<{ environment: string; agents: ReleaseBoardAgent[] }>;
+  trains: ReleaseTrain[];
+  open_promotions: Promotion[];
 };

@@ -46,7 +46,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
     level = str(payload.get("level") or payload.get("test_level") or "system")
     focus = str(payload.get("focus") or "functional,security")
 
-    data = invoke_json(
+    data, usage = invoke_json(
         system=(
             "You are a senior QE test designer. "
             "Return JSON with keys: "
@@ -89,6 +89,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             {"role": "assistant", "content": "Cases designed", "node": "design"},
             {"role": "assistant", "content": "Risk tagged", "node": "prioritize"},
         ],
+        "usage": usage,
         "metadata": {
             "nodes": ["ingest", "design", "prioritize"],
             "domain": "QE",

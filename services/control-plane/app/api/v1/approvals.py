@@ -65,10 +65,23 @@ async def decide_approval(
         raise HTTPException(status_code=404, detail="Approval not found")
     if body.status not in ("approved", "rejected"):
         raise HTTPException(status_code=400, detail="status must be approved or rejected")
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Approval already {req.status}")
     req.status = body.status
     req.decision_notes = body.decision_notes
     req.decided_by = user.user_id
     await db.flush()
+    # Release Command: promote approvals complete/reject the linked promotion
+    if req.action == "promote":
+        from app.services import release as release_svc
+
+        await release_svc.on_approval_decided(
+            db,
+            req,
+            actor_id=user.user_id,
+            actor_email=user.email,
+        )
+    await db.refresh(req)
     await record_audit(
         db,
         tenant_id=user.tenant_id,
@@ -77,6 +90,6 @@ async def decide_approval(
         resource_id=str(req.id),
         actor_id=user.user_id,
         actor_email=user.email,
-        detail={"notes": body.decision_notes},
+        detail={"notes": body.decision_notes, "action": req.action},
     )
     return ApprovalOut.model_validate(req)

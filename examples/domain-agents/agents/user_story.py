@@ -44,7 +44,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
     persona = str(payload.get("persona") or "end user")
     project = str(payload.get("project") or "Digital Banking")
 
-    data = invoke_json(
+    data, usage = invoke_json(
         system=(
             "You are a senior Business Analyst for Application Development (AD). "
             "Produce a single JSON object with keys: "
@@ -89,6 +89,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             {"role": "assistant", "content": "Story drafted", "node": "author"},
             {"role": "assistant", "content": "Acceptance criteria added", "node": "refine"},
         ],
+        "usage": usage,
         "metadata": {
             "nodes": ["ingest", "author", "refine"],
             "domain": "AD",

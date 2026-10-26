@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 import uuid
@@ -71,11 +72,24 @@ def _run_agent(agent_id: str, raw_input: Any) -> dict[str, Any]:
     meta["latency_ms"] = latency_ms
     meta["run_id"] = str(uuid.uuid4())
     meta["agent_id"] = agent_id
+    usage = result.get("usage") or {}
+    # Always surface something countable for FinOps when the provider omits usage
+    if not usage.get("input_tokens") and not usage.get("output_tokens"):
+        blob = json.dumps(result.get("output") or {}, default=str)
+        est_out = max(80, len(blob) // 4)
+        est_in = max(60, est_out // 2)
+        usage = {
+            "input_tokens": est_in,
+            "output_tokens": est_out,
+            "total_tokens": est_in + est_out,
+            "estimated": True,
+        }
+    meta["model"] = meta.get("model") or (result.get("output") or {}).get("model")
     return {
         "output": result.get("output") or {},
         "messages": result.get("messages") or [],
         "metadata": meta,
-        "usage": {},
+        "usage": usage,
         "run_id": meta["run_id"],
         "trace_id": meta["run_id"],
     }
