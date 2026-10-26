@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
 
@@ -30,9 +31,15 @@ def azure_api_version() -> str:
     return os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
 
 
+def _is_restricted_model(name: str) -> bool:
+    n = name.lower()
+    return bool(re.search(r"(gpt-5|o1|o3|o4)", n))
+
+
 def chat_completions_request_config() -> dict[str, Any]:
     provider = llm_provider()
     model = deployment_or_model()
+    restricted = _is_restricted_model(model) or provider == "azure"
     if provider == "azure":
         endpoint = os.environ["AZURE_OPENAI_ENDPOINT"].rstrip("/")
         version = azure_api_version()
@@ -48,6 +55,8 @@ def chat_completions_request_config() -> dict[str, Any]:
                 "Content-Type": "application/json",
             },
             "model": model,
+            "supports_json_object": not restricted,
+            "supports_temperature": not restricted,
         }
     if provider == "openai":
         return {
@@ -58,6 +67,8 @@ def chat_completions_request_config() -> dict[str, Any]:
                 "Content-Type": "application/json",
             },
             "model": model,
+            "supports_json_object": True,
+            "supports_temperature": True,
         }
     raise RuntimeError(
         "No LLM credentials. Set OPENAI_API_KEY or "

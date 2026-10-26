@@ -388,19 +388,27 @@ async def openai_dimension_judge(
         "text": text[:6000],
     }
     try:
+        body: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": json.dumps(user, default=str)
+                    + "\nRespond with JSON only.",
+                },
+            ],
+        }
+        # Azure gpt-5* often returns HTTP 400 for temperature / json_object
+        if cfg.get("supports_temperature", True):
+            body["temperature"] = 0
+        if cfg.get("supports_json_object", True):
+            body["response_format"] = {"type": "json_object"}
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 cfg["url"],
                 headers=cfg["headers"],
-                json={
-                    "model": model,
-                    "temperature": 0,
-                    "response_format": {"type": "json_object"},
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": json.dumps(user, default=str)},
-                    ],
-                },
+                json=body,
             )
         if resp.status_code >= 400:
             return None, (

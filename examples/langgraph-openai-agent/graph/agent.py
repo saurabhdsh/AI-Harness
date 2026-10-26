@@ -108,9 +108,10 @@ def _static_python(snippet: str) -> dict[str, Any]:
     return findings
 
 
-def _llm():
-    # OpenAI or Azure OpenAI — json_object mode reduces malformed responses
-    return build_chat_model(temperature=0.1, json_mode=True)
+def _llm(*, json_mode: bool | None = None):
+    # Azure gpt-5* often rejects temperature / json_object (HTTP 400).
+    # Defaults in llm_config match working test_llm.py Azure calls.
+    return build_chat_model(temperature=0.1, json_mode=json_mode)
 
 
 def node_ingest(state: AgentState) -> dict[str, Any]:
@@ -159,7 +160,7 @@ def node_llm_review(state: AgentState) -> dict[str, Any]:
     system = SystemMessage(
         content=(
             "You are an Application Development code engineering agent. "
-            "Return STRICT JSON with keys: "
+            "Respond with a single JSON object only (no markdown fences) with keys: "
             "summary (string), issues (array of {code,severity,message,line?}), "
             "recommendations (array of strings), "
             "proposed_patch (unified diff string or empty), "
@@ -174,14 +175,17 @@ def node_llm_review(state: AgentState) -> dict[str, Any]:
             f"Language: {state.get('language')}\n"
             f"Static findings JSON:\n{json.dumps(static)}\n\n"
             f"Source code:\n```\n{state['snippet']}\n```\n"
+            "Return JSON only."
         )
     )
 
     last_error: Exception | None = None
     parsed: dict[str, Any] | None = None
+    # Attempt 0: provider-safe defaults. Attempt 1: force no json_object (Azure 400 fix).
     for attempt in range(2):
         try:
-            resp = _llm().invoke([system, human])
+            use_json_mode = False if attempt > 0 else None
+            resp = _llm(json_mode=use_json_mode).invoke([system, human])
             text = resp.content if isinstance(resp.content, str) else str(resp.content)
             parsed = _extract_json(text)
             break
@@ -189,7 +193,7 @@ def node_llm_review(state: AgentState) -> dict[str, Any]:
             last_error = exc
             human = HumanMessage(
                 content=(
-                    f"Your previous answer was invalid JSON ({exc}). "
+                    f"Previous call failed or returned invalid JSON ({exc}). "
                     "Return ONLY a valid JSON object with keys summary, issues, "
                     "recommendations, proposed_patch, risk_score.\n\n"
                     f"Task: {task}\nLanguage: {state.get('language')}\n"
