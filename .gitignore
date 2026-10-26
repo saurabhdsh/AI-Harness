@@ -23,3 +23,6 @@ apps/mission-control/dist/
 *.pem
 *credentials*.json
 .secrets/
+data/
+*.db
+*.db-journal

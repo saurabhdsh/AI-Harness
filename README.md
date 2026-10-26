@@ -6,25 +6,50 @@ Federated AI agent engineering, governance, and operations control plane for AD,
 
 ## Quick start
 
-```bash
-# Prerequisites: Docker, Node 20+, Python 3.12+
-cp .env.example .env
-make setup          # optional local venvs + npm install
+### Without Docker (recommended for laptops)
 
-# Start data plane + control plane + reference agent, then UI
-docker compose up --build -d postgres redis langgraph-agent control-plane seed
-cd apps/mission-control && npm install && npm run dev
+Needs only **Python 3.11+** and **Node 20+**. Uses **SQLite** — no Postgres/Redis/Docker.
+
+```bash
+git clone https://github.com/saurabhdsh/AI-Harness.git
+cd AI-Harness
+cp .env.example .env
+# Edit .env — Azure OpenAI (other Mac) or OPENAI_API_KEY
+make setup-local
+make dev-local
 ```
 
-Or: `make dev` (Compose backend + Vite frontend).
+Stop with `make stop-local`. Logs under `data/logs/`.
+
+### With Docker
+
+```bash
+cp .env.example .env
+make setup
+make dev          # Compose + Vite
+```
 
 | Surface | URL |
 |---------|-----|
 | Mission Control | http://localhost:5173 |
 | Control Plane API | http://localhost:8000/docs |
-| LangGraph AD agent | http://localhost:8080/docs |
+| LangGraph AD agent | http://localhost:8090/docs |
 
 **Demo login:** `admin@harness.local` / `harness-admin`
+
+### LLM credentials (`.env`)
+
+Azure OpenAI (same as `test_llm.py`):
+
+```bash
+AZURE_OPENAI_API_KEY=...
+AZURE_OPENAI_ENDPOINT=https://YOUR_RESOURCE.openai.azure.com/
+AZURE_OPENAI_API_VERSION=2025-04-01-preview
+AZURE_OPENAI_DEPLOYMENT=gpt-5-mini
+OPENAI_MODEL=gpt-5-mini
+```
+
+Or public OpenAI: `OPENAI_API_KEY` + `OPENAI_MODEL`.
 
 ## First milestone demo
 
@@ -55,11 +80,13 @@ docs/                     # Architecture + status
 
 | Command | Purpose |
 |---------|---------|
-| `make setup` | Install local dependencies |
-| `make dev` | Compose + Vite |
+| `make setup` / `setup-local` | Install local dependencies |
+| `make dev-local` | **No Docker** — SQLite + agent + API + UI |
+| `make stop-local` | Stop no-Docker processes |
+| `make dev` | Docker Compose + Vite |
 | `make test` | Backend pytest + frontend build |
 | `make migrate` | Alembic upgrade |
-| `make seed-demo` | Register demo tenant + AD agent |
+| `make seed-demo` | Register demo tenant + AD agent (Compose) |
 | `make smoke-test` | End-to-end API smoke |
 | `make down` | Stop Compose |
 

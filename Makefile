@@ -1,20 +1,32 @@
-.PHONY: setup dev test lint migrate seed-demo smoke-test down logs build
+.PHONY: setup setup-local dev dev-local stop-local test lint migrate seed-demo smoke-test down logs build
 
 setup:
 	@echo "==> Installing control-plane deps"
 	cd services/control-plane && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 	@echo "==> Installing mission-control deps"
 	cd apps/mission-control && npm install
-	@echo "==> Installing langgraph reference agent deps"
-	cd examples/langgraph-agent && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+	@echo "==> Installing OpenAI/Azure LangGraph agent deps"
+	cd examples/langgraph-openai-agent && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 	cp -n .env.example .env || true
-	@echo "Setup complete. Run: make dev"
+	@echo "Setup complete. With Docker: make dev  |  Without Docker: make dev-local"
+
+setup-local: setup
+	@echo "Local (no Docker) ready. Configure .env then: make dev-local"
 
 dev:
 	docker compose up --build -d postgres redis langgraph-agent rest-agent control-plane seed
 	@echo "Waiting for control-plane..."
 	@sleep 8
 	cd apps/mission-control && npm run dev
+
+# No Docker — SQLite + local Python/Node processes
+dev-local:
+	chmod +x scripts/dev-local.sh scripts/stop-local.sh
+	./scripts/dev-local.sh
+
+stop-local:
+	chmod +x scripts/stop-local.sh
+	./scripts/stop-local.sh
 
 build:
 	docker compose build
