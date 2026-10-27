@@ -6,6 +6,10 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.core.deps import AuthUser, DbSession
 from app.schemas.onboarding import (
+    CatalogSyncRequest,
+    CatalogSyncResult,
+    CiRegisterRequest,
+    CiRegisterResult,
     OnboardingJobCreate,
     OnboardingJobResult,
     PathDetectRequest,
@@ -21,6 +25,54 @@ router = APIRouter()
 @router.get("/frameworks")
 async def list_frameworks(user: AuthUser) -> dict:
     return onboarding_service.supported_frameworks()
+
+
+@router.post(
+    "/ci/register",
+    response_model=CiRegisterResult,
+    status_code=status.HTTP_201_CREATED,
+    summary="Post-deploy CI registration (upsert by external_id)",
+)
+async def ci_register(
+    body: CiRegisterRequest,
+    db: DbSession,
+    user: AuthUser,
+) -> CiRegisterResult:
+    """Enterprise path: call from GitHub Actions / Azure DevOps / Jenkins after deploy."""
+    try:
+        return await onboarding_service.register_from_ci(
+            db,
+            tenant_id=user.tenant_id,
+            body=body,
+            actor_id=user.user_id,
+            actor_email=user.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/catalog/sync",
+    response_model=CatalogSyncResult,
+    status_code=status.HTTP_201_CREATED,
+    summary="Sync deployed agent catalog after release",
+)
+async def catalog_sync(
+    body: CatalogSyncRequest,
+    db: DbSession,
+    user: AuthUser,
+) -> CatalogSyncResult:
+    """Discover and/or upsert agents from a running catalog base URL + optional manifest."""
+    result = await onboarding_service.sync_catalog(
+        db,
+        tenant_id=user.tenant_id,
+        body=body,
+        actor_id=user.user_id,
+        actor_email=user.email,
+    )
+    if result.status == "failed":
+        raise HTTPException(status_code=400, detail=result.error or "Catalog sync failed")
+    return result
 
 
 @router.post("/detect/path")

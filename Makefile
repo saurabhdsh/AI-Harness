@@ -41,6 +41,11 @@ register-domain-agents:
 	chmod +x scripts/register-domain-agents.sh
 	./scripts/register-domain-agents.sh
 
+# Post-deploy CI registration (set EXTERNAL_ID + INVOKE_URL)
+ci-register-agent:
+	chmod +x scripts/ci-register-agent.sh
+	./scripts/ci-register-agent.sh
+
 build:
 	docker compose build
 

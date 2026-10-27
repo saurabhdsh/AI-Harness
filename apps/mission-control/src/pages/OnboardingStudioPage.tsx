@@ -13,7 +13,7 @@ import type {
   Trace,
 } from "../lib/types";
 
-type Source = "path" | "upload" | "cloud";
+type Source = "path" | "upload" | "cloud" | "ci";
 type Phase = "source" | "detect" | "configure" | "running" | "complete" | "failed";
 
 type Detection = {
@@ -70,6 +70,16 @@ export function OnboardingStudioPage() {
   const [environment, setEnvironment] = useState("dev");
   const [owner, setOwner] = useState("platform-engineer");
   const [team, setTeam] = useState("ad-engineering");
+  const [invokeUrl, setInvokeUrl] = useState("http://127.0.0.1:8091/agents/ad-user-story/invoke");
+  const [gitRepo, setGitRepo] = useState("https://github.com/org/agent-service");
+  const [gitRef, setGitRef] = useState("main");
+  const [gitSha, setGitSha] = useState("");
+  const [ciResult, setCiResult] = useState<{
+    agent_id: string;
+    created: boolean;
+    external_id: string;
+    invoke_url: string;
+  } | null>(null);
 
   const [statuses, setStatuses] = useState<Record<string, FlowStepStatus>>(
     Object.fromEntries(RUNWAY.map((s) => [s.id, "pending" as FlowStepStatus])),
@@ -137,6 +147,21 @@ export function OnboardingStudioPage() {
           throw new Error(String(body.detail || res.statusText));
         }
         result = (await res.json()) as Detection;
+      } else if (source === "ci") {
+        result = {
+          primary: connectorType || "generic_rest",
+          recommended_connector: connectorType || "generic_rest",
+          confidence: 1,
+          frameworks: [{ id: connectorType || "generic_rest", score: 1 }],
+          notes: [
+            "Git / CI path — agent was built from a repo and deployed by your pipeline.",
+            "Harness registers the deployed invoke URL (upsert by external_id). No local folder scan.",
+            "Prefer calling POST /api/v1/onboarding/ci/register from CI after deploy.",
+          ],
+        };
+        if (!name) setName("CI-registered agent");
+        if (!connectorType) setConnectorType("generic_rest");
+        setConnectorType((c) => c || "generic_rest");
       } else {
         result = {
           primary: connectorType,
@@ -175,6 +200,7 @@ export function OnboardingStudioPage() {
     setPhase("running");
     setError("");
     setOnboard(null);
+    setCiResult(null);
     setInvokeResult(null);
     setInvokePending(false);
     setEvalRun(null);
@@ -188,8 +214,88 @@ export function OnboardingStudioPage() {
         "done",
         detection?.primary
           ? `${detection.primary} · confidence ${Math.round((detection.confidence ?? 0) * 100)}%`
-          : "Cloud / manual connector",
+          : source === "ci"
+            ? "CI / Git deploy provenance"
+            : "Cloud / manual connector",
       );
+
+      // Enterprise CI path — upsert deployed agent by external_id (no local folder)
+      if (source === "ci") {
+        if (!externalId.trim()) throw new Error("external_id is required for CI registration");
+        if (!invokeUrl.trim()) throw new Error("invoke_url is required for CI registration");
+
+        mark("connect", "active", "CI post-deploy register");
+        mark("discover", "active", `Upsert ${externalId}`);
+        const reg = await api<{
+          agent_id: string;
+          connection_id: string | null;
+          created: boolean;
+          external_id: string;
+          invoke_url: string;
+        }>("/api/v1/onboarding/ci/register", {
+          method: "POST",
+          body: JSON.stringify({
+            name: name || externalId,
+            external_id: externalId,
+            invoke_url: invokeUrl,
+            connector_type: connectorType || "generic_rest",
+            framework: connectorType || "generic_rest",
+            base_url: baseUrl || null,
+            secret_ref: secretRef || null,
+            domain,
+            environment,
+            owner,
+            team,
+            git_repo: gitRepo || null,
+            git_ref: gitRef || null,
+            git_sha: gitSha || null,
+            create_connection: true,
+          }),
+        });
+        setCiResult(reg);
+        setAgentId(reg.agent_id);
+        mark("connect", "done", reg.created ? "Connection created" : "Connection reused");
+        mark(
+          "discover",
+          "done",
+          reg.created ? `Registered ${reg.external_id}` : `Updated ${reg.external_id}`,
+        );
+
+        const id = reg.agent_id;
+        mark("invoke", "active", "Smoke invoke via registered URL");
+        setInvokePending(true);
+        const invocation = await api<AgentInvokeResponse>(`/api/v1/agents/${id}/invoke`, {
+          method: "POST",
+          body: JSON.stringify({
+            input: { task: "analyze", use_sample: true },
+            config: {},
+          }),
+        });
+        setInvokeResult(invocation);
+        setInvokePending(false);
+        if (invocation.status !== "succeeded") {
+          mark("invoke", "error", invocation.error || "Invoke failed");
+          throw new Error(invocation.error || "Invoke failed");
+        }
+        mark(
+          "invoke",
+          "done",
+          `${Math.round(invocation.latency_ms ?? 0)} ms · smoke ok`,
+        );
+
+        mark("trace", "active", "Loading spans");
+        const t = await api<Trace>(`/api/v1/traces/${invocation.execution_id}`);
+        setTrace(t);
+        mark("trace", "done", `${t.spans?.length ?? 0} span(s)`);
+
+        mark("evaluate", "done", "Skipped — CI path uses smoke invoke; run Evaluation Lab for gates");
+        mark("govern", "active", "Refreshing mission");
+        await qc.invalidateQueries({ queryKey: ["mission-overview"] });
+        await qc.invalidateQueries({ queryKey: ["agents"] });
+        mark("govern", "done", "Agent visible in Universe");
+        setPhase("complete");
+        return;
+      }
 
       mark("connect", "active", isCloudConnector ? "Authenticating cloud connector" : `GET ${baseUrl}/health`);
       await sleep(300);
@@ -315,7 +421,7 @@ export function OnboardingStudioPage() {
       <PageHeader
         eyebrow="Ingest"
         title="Onboarding Studio"
-        subtitle="Point at a Python agent project (path or zip). Harness detects LangGraph, CrewAI, Bedrock, Azure Foundry, and more — then registers without rewriting the agent."
+        subtitle="Enterprise path: register Git-built agents after CI/CD deploy. Lab path: detect a local project or zip. Cloud path: connect Bedrock / Foundry / ServiceNow."
       />
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -330,6 +436,7 @@ export function OnboardingStudioPage() {
             <div className="mb-4 flex flex-wrap gap-2">
               {(
                 [
+                  ["ci", "Git / CI deploy"],
                   ["path", "Project path"],
                   ["upload", "Upload zip"],
                   ["cloud", "Cloud platform"],
@@ -343,6 +450,7 @@ export function OnboardingStudioPage() {
                     setSource(id);
                     setPhase("source");
                     setDetection(null);
+                    if (id === "ci") setConnectorType("generic_rest");
                   }}
                   className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
                     source === id
@@ -355,6 +463,62 @@ export function OnboardingStudioPage() {
               ))}
             </div>
 
+            {source === "ci" && (
+              <div className="space-y-3">
+                <p className="text-[13px] text-[var(--ink-muted)]">
+                  For agents built in Git and deployed by your pipeline. Register the{" "}
+                  <span className="font-medium text-[var(--ink)]">deployed invoke URL</span> — Harness
+                  does not clone the repo. Idempotent on <span className="font-mono">external_id</span>.
+                </p>
+                <Field label="Stable external id (service / agent key)">
+                  <input
+                    className={inputClass}
+                    value={externalId}
+                    disabled={phase === "running"}
+                    onChange={(e) => setExternalId(e.target.value)}
+                    placeholder="ad-user-story"
+                  />
+                </Field>
+                <Field label="Deployed invoke URL">
+                  <input
+                    className={inputClass}
+                    value={invokeUrl}
+                    disabled={phase === "running"}
+                    onChange={(e) => setInvokeUrl(e.target.value)}
+                    placeholder="https://agents.example.com/agents/ad-user-story/invoke"
+                  />
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Git repo URL">
+                    <input
+                      className={inputClass}
+                      value={gitRepo}
+                      disabled={phase === "running"}
+                      onChange={(e) => setGitRepo(e.target.value)}
+                      placeholder="https://github.com/org/repo"
+                    />
+                  </Field>
+                  <Field label="Git ref">
+                    <input
+                      className={inputClass}
+                      value={gitRef}
+                      disabled={phase === "running"}
+                      onChange={(e) => setGitRef(e.target.value)}
+                      placeholder="main / v1.2.0"
+                    />
+                  </Field>
+                </div>
+                <Field label="Git SHA (optional)">
+                  <input
+                    className={inputClass}
+                    value={gitSha}
+                    disabled={phase === "running"}
+                    onChange={(e) => setGitSha(e.target.value)}
+                    placeholder="abc123…"
+                  />
+                </Field>
+              </div>
+            )}
             {source === "path" && (
               <Field label="Absolute path to agent project">
                 <input
@@ -398,7 +562,11 @@ export function OnboardingStudioPage() {
 
             <div className="mt-4">
               <Button onClick={() => void runDetect()} disabled={detecting || phase === "running"}>
-                {detecting ? "Analyzing project…" : "Detect framework"}
+                {detecting
+                  ? "Analyzing…"
+                  : source === "ci"
+                    ? "Continue with CI provenance"
+                    : "Detect framework"}
               </Button>
             </div>
             {detectError && <p className="mt-3 text-[13px] text-red-600">{detectError}</p>}
@@ -491,7 +659,7 @@ export function OnboardingStudioPage() {
                   </select>
                 </Field>
 
-                {!isCloudConnector && (
+                {!isCloudConnector && source !== "ci" && (
                   <Field label="Running agent base URL">
                     <input
                       className={inputClass}
@@ -501,6 +669,36 @@ export function OnboardingStudioPage() {
                       placeholder="http://127.0.0.1:8090"
                     />
                   </Field>
+                )}
+
+                {source === "ci" && (
+                  <>
+                    <Field label="External id">
+                      <input
+                        className={inputClass}
+                        value={externalId}
+                        onChange={(e) => setExternalId(e.target.value)}
+                        disabled={phase === "running"}
+                      />
+                    </Field>
+                    <Field label="Invoke URL">
+                      <input
+                        className={inputClass}
+                        value={invokeUrl}
+                        onChange={(e) => setInvokeUrl(e.target.value)}
+                        disabled={phase === "running"}
+                      />
+                    </Field>
+                    <Field label="Optional connection base URL">
+                      <input
+                        className={inputClass}
+                        value={baseUrl}
+                        onChange={(e) => setBaseUrl(e.target.value)}
+                        disabled={phase === "running"}
+                        placeholder="Derived from invoke URL if empty"
+                      />
+                    </Field>
+                  </>
                 )}
 
                 {connectorType === "azure_foundry" && (
@@ -580,7 +778,11 @@ export function OnboardingStudioPage() {
 
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button onClick={() => void runFullFlow()} disabled={phase === "running"}>
-                  {phase === "running" ? "Running smart onboard…" : "Onboard & run full flow"}
+                  {phase === "running"
+                    ? "Running…"
+                    : source === "ci"
+                      ? "Register from deploy & smoke"
+                      : "Onboard & run full flow"}
                 </Button>
                 {(phase === "complete" || phase === "failed") && (
                   <Button variant="ghost" onClick={() => setPhase("configure")}>
@@ -612,12 +814,31 @@ export function OnboardingStudioPage() {
             )}
           </div>
           <div className="mb-5 font-serif text-2xl text-[var(--ink)]">Live progress</div>
-          {phase === "source" || phase === "detect" || (phase === "configure" && !onboard) ? (
-            <p className="text-[13px] text-[var(--ink-muted)]">
-              Detect a project first, configure the running endpoint or cloud credentials, then start the runway.
-              Supported fingerprints: LangGraph, LangChain, CrewAI, AutoGen, LlamaIndex, FastAPI agents, AWS
-              Bedrock, Azure AI Foundry.
-            </p>
+          {phase === "source" || phase === "detect" || (phase === "configure" && !onboard && !ciResult) ? (
+            <div className="space-y-3 text-[13px] text-[var(--ink-muted)]">
+              <p>
+                Prefer <span className="font-medium text-[var(--ink)]">Git / CI deploy</span> for production:
+                your pipeline builds from Git, deploys the agent, then calls Harness to register the live
+                invoke URL. Path/zip remain for lab detection.
+              </p>
+              <pre className="overflow-x-auto rounded-xl bg-[var(--bg-muted)] p-3 font-mono text-[10px] text-[var(--ink)]">
+{`# After deploy in CI:
+curl -X POST "$HARNESS_API/api/v1/onboarding/ci/register" \\
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \\
+  -d '{
+    "name": "AD User Story",
+    "external_id": "ad-user-story",
+    "invoke_url": "https://agents.example.com/agents/ad-user-story/invoke",
+    "git_repo": "https://github.com/org/agents",
+    "git_sha": "'"$GIT_SHA"'",
+    "environment": "prod"
+  }'`}
+              </pre>
+              <p className="text-[12px]">
+                Catalog sync: <span className="font-mono">POST /api/v1/onboarding/catalog/sync</span> —
+                discover a fleet from one base URL after release.
+              </p>
+            </div>
           ) : (
             <>
               <FlowProgress steps={steps} />

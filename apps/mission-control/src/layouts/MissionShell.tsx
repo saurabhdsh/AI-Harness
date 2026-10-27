@@ -1,8 +1,59 @@
+import { useEffect, useState, type ComponentType } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LogOut } from "lucide-react";
+import {
+  Activity,
+  Boxes,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  FlaskConical,
+  GitBranch,
+  Hammer,
+  LayoutDashboard,
+  LogOut,
+  PanelLeft,
+  Radar,
+  Scale,
+  Settings,
+  ShieldAlert,
+  Sparkles,
+  Wallet,
+  type LucideProps,
+} from "lucide-react";
 import { useAuth } from "../stores/auth";
 
-function UserCard({ onSignOut }: { onSignOut: () => void }) {
+const SIDEBAR_KEY = "harness_sidebar_collapsed";
+
+type NavIcon = ComponentType<LucideProps>;
+
+const links: Array<{
+  to: string;
+  label: string;
+  icon: NavIcon;
+  end?: boolean;
+}> = [
+  { to: "/", label: "Mission Control", icon: LayoutDashboard, end: true },
+  { to: "/agents", label: "Agent Universe", icon: Boxes },
+  { to: "/onboarding", label: "Onboarding Studio", icon: ClipboardCheck },
+  { to: "/workbench", label: "Engineering Workbench", icon: Hammer },
+  { to: "/evaluations", label: "Evaluation Lab", icon: FlaskConical },
+  { to: "/skills", label: "Skill Forge", icon: Sparkles },
+  { to: "/releases", label: "Release Command", icon: GitBranch },
+  { to: "/observatory", label: "Live Observatory", icon: Radar },
+  { to: "/finops", label: "FinOps Intelligence", icon: Wallet },
+  { to: "/governance", label: "Governance Center", icon: Scale },
+  { to: "/reliability", label: "Reliability Center", icon: ShieldAlert },
+  { to: "/workflows", label: "Workflow Orchestration", icon: Activity },
+  { to: "/admin", label: "Administration", icon: Settings },
+];
+
+function UserCard({
+  onSignOut,
+  collapsed,
+}: {
+  onSignOut: () => void;
+  collapsed: boolean;
+}) {
   const { user } = useAuth();
   if (!user) return null;
 
@@ -15,6 +66,29 @@ function UserCard({ onSignOut }: { onSignOut: () => void }) {
   const parts = displayName.split(" ").filter(Boolean);
   const initials =
     parts.length >= 2 ? parts[0][0] + parts[parts.length - 1][0] : displayName.slice(0, 2);
+
+  if (collapsed) {
+    return (
+      <div className="border-t border-[var(--line)] px-2 py-3">
+        <div className="flex flex-col items-center gap-2">
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1d1d1f] text-[11px] font-semibold uppercase tracking-wide text-white"
+            title={`${displayName} · ${user.role}`}
+          >
+            {initials.toUpperCase()}
+          </div>
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="rounded-md p-1.5 text-[var(--ink-muted)] transition-colors hover:bg-white hover:text-[var(--ink)]"
+            title="Sign out"
+          >
+            <LogOut size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="border-t border-[var(--line)] px-4 py-4">
@@ -41,88 +115,179 @@ function UserCard({ onSignOut }: { onSignOut: () => void }) {
   );
 }
 
-const links = [
-  { to: "/", label: "Mission Control", end: true },
-  { to: "/agents", label: "Agent Universe" },
-  { to: "/onboarding", label: "Onboarding Studio" },
-  { to: "/workbench", label: "Engineering Workbench" },
-  { to: "/evaluations", label: "Evaluation Lab" },
-  { to: "/skills", label: "Skill Forge" },
-  { to: "/releases", label: "Release Command" },
-  { to: "/observatory", label: "Live Observatory" },
-  { to: "/finops", label: "FinOps Intelligence" },
-  { to: "/governance", label: "Governance Center" },
-  { to: "/reliability", label: "Reliability Center" },
-  { to: "/workflows", label: "Workflow Orchestration" },
-  { to: "/admin", label: "Administration" },
-];
+function SidebarNav({
+  collapsed,
+  onNavigate,
+}: {
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
+  return (
+    <nav
+      className={`flex flex-col gap-0.5 overflow-y-auto ${collapsed ? "px-1.5" : "px-2"}`}
+      style={{ flex: "1 1 0", minHeight: 0 }}
+    >
+      {links.map((l) => {
+        const Icon = l.icon;
+        return (
+          <NavLink
+            key={l.to}
+            to={l.to}
+            end={l.end}
+            title={l.label}
+            onClick={onNavigate}
+            className={({ isActive }) =>
+              `rounded-lg text-[13px] font-medium transition-colors ${
+                collapsed
+                  ? "flex items-center justify-center px-0 py-2.5"
+                  : "flex items-center gap-2.5 px-3 py-2"
+              } ${
+                isActive
+                  ? "bg-white text-[var(--ink)] shadow-[var(--shadow-sm)]"
+                  : "text-[var(--ink-muted)] hover:bg-white/60 hover:text-[var(--ink)]"
+              }`
+            }
+          >
+            <Icon size={collapsed ? 18 : 15} strokeWidth={1.75} className="shrink-0" />
+            {!collapsed && <span className="truncate">{l.label}</span>}
+          </NavLink>
+        );
+      })}
+    </nav>
+  );
+}
 
 export function MissionShell() {
   const { logout } = useAuth();
   const nav = useNavigate();
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [collapsed]);
 
   const handleSignOut = () => {
     logout();
     nav("/login");
   };
 
+  const sidebarWidth = collapsed ? 72 : 220;
+
   return (
     <div className="app-bg min-h-screen">
-      <div className="grid min-h-screen lg:grid-cols-[220px_1fr]">
+      <div className="flex min-h-screen">
+        {/* Desktop sidebar */}
         <aside
-          className="hidden border-r border-[var(--line)] bg-[var(--bg-muted)] lg:flex lg:flex-col"
-          style={{ height: "100vh", position: "sticky", top: 0 }}
+          className="sticky top-0 hidden h-screen shrink-0 flex-col border-r border-[var(--line)] bg-[var(--bg-muted)] transition-[width] duration-200 ease-out lg:flex"
+          style={{ width: sidebarWidth }}
         >
-          <div className="shrink-0 px-6 py-6">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-faint)]">
-              HARNESS
-            </div>
-            <div
-              className="mt-0.5 text-[17px] font-semibold text-[var(--ink)]"
-              style={{ letterSpacing: "-0.022em" }}
-            >
-              AI Engineering
+          <div className={`shrink-0 ${collapsed ? "px-2 py-4" : "px-4 py-5"}`}>
+            <div className={`flex items-start ${collapsed ? "flex-col items-center gap-2" : "justify-between gap-2"}`}>
+              <div className={collapsed ? "text-center" : "min-w-0"}>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-faint)]">
+                  {collapsed ? "H" : "HARNESS"}
+                </div>
+                {!collapsed && (
+                  <div
+                    className="mt-0.5 text-[17px] font-semibold text-[var(--ink)]"
+                    style={{ letterSpacing: "-0.022em" }}
+                  >
+                    AI Engineering
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setCollapsed((c) => !c)}
+                className="rounded-md p-1.5 text-[var(--ink-muted)] transition-colors hover:bg-white hover:text-[var(--ink)]"
+                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                aria-expanded={!collapsed}
+              >
+                {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+              </button>
             </div>
           </div>
 
-          <nav
-            className="flex flex-col gap-0.5 overflow-y-auto px-2"
-            style={{ flex: "1 1 0", minHeight: 0 }}
-          >
-            {links.map((l) => (
-              <NavLink
-                key={l.to}
-                to={l.to}
-                end={l.end}
-                className={({ isActive }) =>
-                  `rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
-                    isActive
-                      ? "bg-white text-[var(--ink)] shadow-[var(--shadow-sm)]"
-                      : "text-[var(--ink-muted)] hover:bg-white/60 hover:text-[var(--ink)]"
-                  }`
-                }
-              >
-                {l.label}
-              </NavLink>
-            ))}
-          </nav>
-
+          <SidebarNav collapsed={collapsed} />
           <div className="shrink-0">
-            <UserCard onSignOut={handleSignOut} />
+            <UserCard onSignOut={handleSignOut} collapsed={collapsed} />
           </div>
         </aside>
 
-        <div className="flex min-w-0 flex-col overflow-x-hidden">
-          <header className="flex items-center border-b border-[var(--line)] bg-white/80 px-8 py-3 backdrop-blur-xl">
+        {/* Main column */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+          <header className="flex items-center gap-3 border-b border-[var(--line)] bg-white/80 px-4 py-3 backdrop-blur-xl sm:px-8">
+            <button
+              type="button"
+              onClick={() => setMobileOpen(true)}
+              className="rounded-md p-1.5 text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-muted)] hover:text-[var(--ink)] lg:hidden"
+              title="Open menu"
+              aria-label="Open menu"
+            >
+              <PanelLeft size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setCollapsed((c) => !c)}
+              className="hidden rounded-md p-1.5 text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-muted)] hover:text-[var(--ink)] lg:inline-flex"
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              <PanelLeft size={16} />
+            </button>
             <div className="text-[13px] font-medium text-[var(--ink-muted)]">
               Federated agent engineering control plane
             </div>
           </header>
-          <main className="min-w-0 flex-1 overflow-x-hidden px-6 py-8 sm:px-8">
+          <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-6 sm:px-8 sm:py-8">
             <Outlet />
           </main>
         </div>
       </div>
+
+      {/* Mobile drawer */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/25"
+            aria-label="Close menu"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="absolute bottom-0 left-0 top-0 flex w-[min(260px,85vw)] flex-col border-r border-[var(--line)] bg-[var(--bg-muted)] shadow-lg">
+            <div className="flex items-center justify-between px-4 py-4">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-faint)]">
+                  HARNESS
+                </div>
+                <div className="text-[15px] font-semibold text-[var(--ink)]">AI Engineering</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileOpen(false)}
+                className="rounded-md p-1.5 text-[var(--ink-muted)] hover:bg-white"
+                aria-label="Close"
+              >
+                <ChevronLeft size={16} />
+              </button>
+            </div>
+            <SidebarNav collapsed={false} onNavigate={() => setMobileOpen(false)} />
+            <UserCard onSignOut={handleSignOut} collapsed={false} />
+          </aside>
+        </div>
+      )}
     </div>
   );
 }

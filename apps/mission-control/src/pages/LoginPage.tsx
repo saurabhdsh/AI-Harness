@@ -6,8 +6,8 @@ import { useAuth } from "../stores/auth";
 export function LoginPage() {
   const { login, user } = useAuth();
   const nav = useNavigate();
-  const [email, setEmail] = useState("admin@harness.local");
-  const [password, setPassword] = useState("harness-admin");
+  const [email, setEmail] = useState("Saurabh");
+  const [password, setPassword] = useState("admin123");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -66,16 +66,16 @@ export function LoginPage() {
               Sign in
             </h2>
             <p className="mt-1 text-[14px] text-[#86868b]">
-              Use your Harness credentials. Demo: admin@harness.local / harness-admin
+              Use your Harness credentials to continue.
             </p>
           </div>
-          <Field label="Email">
+          <Field label="User">
             <input
               className={inputClass}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="username"
-              placeholder="admin@harness.local"
+              placeholder="Saurabh"
             />
           </Field>
           <Field label="Password">

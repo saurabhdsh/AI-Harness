@@ -1,0 +1,31 @@
+{
+  "name": "domain-agents-catalog",
+  "connector_type": "generic_rest",
+  "base_url": "http://127.0.0.1:8091",
+  "discover": true,
+  "environment": "dev",
+  "owner": "platform",
+  "team": "domain-agents",
+  "git_repo": "https://github.com/org/AI-Harness",
+  "git_ref": "main",
+  "agents": [
+    {
+      "name": "AD User Story Author",
+      "external_id": "ad-user-story",
+      "invoke_url": "http://127.0.0.1:8091/agents/ad-user-story/invoke",
+      "domain": "AD"
+    },
+    {
+      "name": "AMS Incident Analyst",
+      "external_id": "ams-incident-analyst",
+      "invoke_url": "http://127.0.0.1:8091/agents/ams-incident-analyst/invoke",
+      "domain": "AMS"
+    },
+    {
+      "name": "QE Test Designer",
+      "external_id": "qe-test-designer",
+      "invoke_url": "http://127.0.0.1:8091/agents/qe-test-designer/invoke",
+      "domain": "QE"
+    }
+  ]
+}

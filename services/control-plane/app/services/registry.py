@@ -14,6 +14,83 @@ from app.schemas.agent import AgentCreate, AgentUpdate
 from app.services.audit import record_audit
 
 
+async def find_agent_by_external_id(
+    db: AsyncSession,
+    *,
+    tenant_id: UUID,
+    external_id: str,
+) -> Agent | None:
+    if not external_id:
+        return None
+    result = await db.execute(
+        select(Agent).where(
+            Agent.tenant_id == tenant_id,
+            Agent.external_id == external_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def upsert_agent_by_external_id(
+    db: AsyncSession,
+    *,
+    tenant_id: UUID,
+    data: AgentCreate,
+    actor_id: UUID | None = None,
+    actor_email: str | None = None,
+) -> tuple[Agent, bool]:
+    """Create or update an agent keyed by tenant + external_id. Returns (agent, created)."""
+    if data.external_id:
+        existing = await find_agent_by_external_id(
+            db, tenant_id=tenant_id, external_id=data.external_id
+        )
+        if existing:
+            existing.name = data.name or existing.name
+            existing.platform = data.platform or existing.platform
+            existing.framework = data.framework or existing.framework
+            existing.owner = data.owner if data.owner is not None else existing.owner
+            existing.team = data.team if data.team is not None else existing.team
+            existing.domain = data.domain if data.domain is not None else existing.domain
+            existing.environment = data.environment or existing.environment
+            if data.lifecycle_state:
+                existing.lifecycle_state = data.lifecycle_state
+            if data.connection_id is not None:
+                existing.connection_id = data.connection_id
+            if data.invoke_url:
+                existing.invoke_url = data.invoke_url
+            if data.description is not None:
+                existing.description = data.description
+            # Merge metadata — CI/git fields win
+            merged = dict(existing.metadata_ or {})
+            merged.update(data.metadata or {})
+            existing.metadata_ = merged
+            await db.flush()
+            await record_audit(
+                db,
+                tenant_id=tenant_id,
+                action="agent.updated_from_ci",
+                resource_type="agent",
+                resource_id=str(existing.id),
+                actor_id=actor_id,
+                actor_email=actor_email,
+                detail={
+                    "external_id": existing.external_id,
+                    "invoke_url": existing.invoke_url,
+                    "git_sha": (data.metadata or {}).get("git_sha"),
+                },
+            )
+            return existing, False
+
+    agent = await create_agent(
+        db,
+        tenant_id=tenant_id,
+        data=data,
+        actor_id=actor_id,
+        actor_email=actor_email,
+    )
+    return agent, True
+
+
 async def create_agent(
     db: AsyncSession,
     *,
