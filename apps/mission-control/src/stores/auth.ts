@@ -16,7 +16,7 @@ export const useAuth = create<AuthState>((set) => ({
   login: async (email, password) => {
     const data = await api<TokenResponse>("/api/v1/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: email.trim(), password }),
     });
     setToken(data.access_token);
     const user: AuthUser = {

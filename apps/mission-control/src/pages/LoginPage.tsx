@@ -6,8 +6,8 @@ import { useAuth } from "../stores/auth";
 export function LoginPage() {
   const { login, user } = useAuth();
   const nav = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("admin@harness.local");
+  const [password, setPassword] = useState("harness-admin");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 

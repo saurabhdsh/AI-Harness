@@ -40,6 +40,7 @@ async def invoke_agent(
     config: dict | None = None,
     actor_id: UUID | None = None,
     actor_email: str | None = None,
+    skill_slug: str | None = None,
 ) -> AgentExecution:
     agent = await db.get(Agent, agent_id)
     if agent is None or agent.tenant_id != tenant_id:
@@ -49,11 +50,51 @@ async def invoke_agent(
     if agent.connection_id:
         connection = await db.get(PlatformConnection, agent.connection_id)
 
+    # Inject attached enterprise skills into config + input
+    from app.skills.service import format_skills_system_block, get_agent_skills_payload
+
+    cfg = dict(config or {})
+    slug = skill_slug or cfg.pop("skill_slug", None)
+    if isinstance(input_payload, dict):
+        slug = slug or input_payload.get("_skill_slug") or input_payload.get("skill_slug")
+    skills = await get_agent_skills_payload(
+        db, tenant_id=tenant_id, agent_id=agent_id, skill_slug=slug
+    )
+    enriched_input = dict(input_payload or {})
+    if skills:
+        system_block = format_skills_system_block(skills)
+        cfg["skills"] = [
+            {
+                "slug": s["slug"],
+                "name": s["name"],
+                "version": s["version"],
+                "domain": s["domain"],
+                "instructions": s["instructions"],
+                "output_schema": s.get("output_schema") or {},
+                "attachment_config": s.get("attachment_config") or {},
+            }
+            for s in skills
+        ]
+        cfg["system_skills"] = system_block
+        enriched_input["harness_skills"] = [
+            {
+                "slug": s["slug"],
+                "name": s["name"],
+                "instructions": s["instructions"],
+                "output_schema": s.get("output_schema") or {},
+            }
+            for s in skills
+        ]
+
     execution = AgentExecution(
         tenant_id=tenant_id,
         agent_id=agent.id,
         status="running",
-        request={"input": input_payload, "config": config or {}},
+        request={
+            "input": enriched_input,
+            "config": cfg,
+            "skills": [s["slug"] for s in skills],
+        },
         invoked_by=actor_id,
         trace_id=str(uuid4()),
     )
@@ -64,8 +105,8 @@ async def invoke_agent(
         connector = _connector_for_agent(agent, connection)
         response = await connector.invoke_agent(
             InvokeRequest(
-                input=input_payload,
-                config=config or {},
+                input=enriched_input,
+                config=cfg,
                 external_id=agent.external_id,
                 invoke_url=agent.invoke_url,
             )

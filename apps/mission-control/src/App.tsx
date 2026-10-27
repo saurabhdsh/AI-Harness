@@ -12,6 +12,7 @@ import { MissionControlPage } from "./pages/MissionControlPage";
 import { OnboardingStudioPage } from "./pages/OnboardingStudioPage";
 import { ReleaseCommandPage } from "./pages/ReleaseCommandPage";
 import { ReliabilityPage } from "./pages/ReliabilityPage";
+import { SkillForgePage } from "./pages/SkillForgePage";
 import { WorkbenchPage } from "./pages/WorkbenchPage";
 import { WorkflowsPage } from "./pages/WorkflowsPage";
 import { useAuth } from "./stores/auth";
@@ -41,6 +42,7 @@ export function App() {
           <Route path="onboarding" element={<OnboardingStudioPage />} />
           <Route path="workbench" element={<WorkbenchPage />} />
           <Route path="evaluations" element={<EvaluationLabPage />} />
+          <Route path="skills" element={<SkillForgePage />} />
           <Route path="releases" element={<ReleaseCommandPage />} />
           <Route path="observatory" element={<LiveObservatoryPage />} />
           <Route path="finops" element={<FinOpsPage />} />

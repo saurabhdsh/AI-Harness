@@ -15,7 +15,10 @@ from app.api.v1 import (
     mission,
     onboarding,
     releases,
+    reliability,
+    skills,
     traces,
+    workflows,
 )
 
 api_router = APIRouter()
@@ -32,3 +35,6 @@ api_router.include_router(releases.router, prefix="/releases", tags=["releases"]
 api_router.include_router(audit.router, prefix="/audit-events", tags=["audit"])
 api_router.include_router(mission.router, prefix="/mission", tags=["mission"])
 api_router.include_router(costs.router, prefix="/costs", tags=["costs"])
+api_router.include_router(skills.router, prefix="/skills", tags=["skills"])
+api_router.include_router(reliability.router, prefix="/reliability", tags=["reliability"])
+api_router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])

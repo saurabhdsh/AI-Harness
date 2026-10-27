@@ -71,6 +71,8 @@ class AgentOut(ORMModel):
 class AgentInvokeRequest(BaseModel):
     input: dict[str, Any] = Field(default_factory=dict)
     config: dict[str, Any] = Field(default_factory=dict)
+    # Optional: limit injected enterprise skills to one slug
+    skill_slug: str | None = None
 
 
 class AgentInvokeResponse(BaseModel):

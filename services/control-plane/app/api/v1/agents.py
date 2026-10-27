@@ -150,6 +150,7 @@ async def invoke_agent(
             config=body.config,
             actor_id=user.user_id,
             actor_email=user.email,
+            skill_slug=body.skill_slug,
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

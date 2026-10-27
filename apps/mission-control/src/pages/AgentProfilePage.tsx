@@ -12,7 +12,14 @@ import {
   StatusBadge,
 } from "../components/ui";
 import { api } from "../lib/api";
-import type { Agent, AgentInvokeResponse, Execution, Trace } from "../lib/types";
+import type {
+  Agent,
+  AgentInvokeResponse,
+  AgentSkillAttachment,
+  Execution,
+  Skill,
+  Trace,
+} from "../lib/types";
 
 export function AgentProfilePage() {
   const { id = "" } = useParams();
@@ -22,6 +29,8 @@ export function AgentProfilePage() {
   );
   const [invokeResult, setInvokeResult] = useState<AgentInvokeResponse | null>(null);
   const [selectedTrace, setSelectedTrace] = useState<string | null>(null);
+  const [skillSlug, setSkillSlug] = useState("");
+  const [attachSkillId, setAttachSkillId] = useState("");
 
   const agent = useQuery({
     queryKey: ["agent", id],
@@ -48,6 +57,37 @@ export function AgentProfilePage() {
     enabled: Boolean(selectedTrace),
   });
 
+  const attachedSkills = useQuery({
+    queryKey: ["agent-skills", id],
+    queryFn: () => api<AgentSkillAttachment[]>(`/api/v1/skills/by-agent/${id}`),
+    enabled: Boolean(id),
+  });
+
+  const catalog = useQuery({
+    queryKey: ["skills"],
+    queryFn: () => api<Skill[]>("/api/v1/skills"),
+  });
+
+  const attachSkill = useMutation({
+    mutationFn: async () => {
+      if (!attachSkillId) throw new Error("Select a skill");
+      return api<AgentSkillAttachment>(`/api/v1/skills/by-agent/${id}`, {
+        method: "POST",
+        body: JSON.stringify({ skill_id: attachSkillId, config: {} }),
+      });
+    },
+    onSuccess: () => {
+      setAttachSkillId("");
+      void qc.invalidateQueries({ queryKey: ["agent-skills", id] });
+    },
+  });
+
+  const detachSkill = useMutation({
+    mutationFn: (skillId: string) =>
+      api<void>(`/api/v1/skills/by-agent/${id}/${skillId}`, { method: "DELETE" }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["agent-skills", id] }),
+  });
+
   const invoke = useMutation({
     mutationFn: async () => {
       let input: Record<string, unknown> = {};
@@ -58,7 +98,11 @@ export function AgentProfilePage() {
       }
       return api<AgentInvokeResponse>(`/api/v1/agents/${id}/invoke`, {
         method: "POST",
-        body: JSON.stringify({ input, config: {} }),
+        body: JSON.stringify({
+          input,
+          config: {},
+          skill_slug: skillSlug || null,
+        }),
       });
     },
     onSuccess: (data) => {
@@ -117,6 +161,28 @@ export function AgentProfilePage() {
 
         <section className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-[var(--shadow-sm)]">
           <h2 className="text-[15px] font-semibold">Invoke</h2>
+          <Field label="Skill (optional)">
+            <select
+              className={`${inputClass} mt-1`}
+              value={skillSlug}
+              onChange={(e) => {
+                setSkillSlug(e.target.value);
+                const att = (attachedSkills.data ?? []).find(
+                  (x) => x.skill?.slug === e.target.value,
+                );
+                if (att?.skill?.sample_input) {
+                  setPayload(JSON.stringify(att.skill.sample_input, null, 2));
+                }
+              }}
+            >
+              <option value="">All attached skills</option>
+              {(attachedSkills.data ?? []).map((a) => (
+                <option key={a.id} value={a.skill?.slug ?? a.skill_id}>
+                  {a.skill?.name ?? a.skill_id}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label="JSON input">
             <textarea
               className={`${inputClass} mt-1 min-h-[120px] font-mono text-[12px]`}
@@ -141,6 +207,76 @@ export function AgentProfilePage() {
           )}
         </section>
       </div>
+
+      <section className="mt-6 rounded-2xl border border-[var(--line)] bg-white p-5 shadow-[var(--shadow-sm)]">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-[15px] font-semibold">Attached skills</h2>
+          <Link to="/skills" className="text-[12px] text-[var(--accent)] hover:underline">
+            Open Skill Forge →
+          </Link>
+        </div>
+        {attachedSkills.isLoading && <Skeleton className="mt-3 h-16" />}
+        {attachedSkills.data && attachedSkills.data.length === 0 && (
+          <p className="mt-3 text-[13px] text-[var(--ink-muted)]">
+            No skills attached. Attach from Skill Forge or below.
+          </p>
+        )}
+        {attachedSkills.data && attachedSkills.data.length > 0 && (
+          <ul className="mt-3 space-y-2">
+            {attachedSkills.data.map((a) => (
+              <li
+                key={a.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-[13px] font-medium">
+                    {a.skill?.name ?? a.skill_id}
+                  </div>
+                  <div className="font-mono text-[11px] text-[var(--ink-muted)]">
+                    {a.skill?.slug} · {a.skill?.domain} · v{a.skill?.version}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  disabled={detachSkill.isPending}
+                  onClick={() => detachSkill.mutate(a.skill_id)}
+                >
+                  Detach
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-4 flex flex-wrap items-end gap-2">
+          <div className="min-w-[220px] flex-1">
+            <Field label="Attach from catalog">
+              <select
+                className={`${inputClass} mt-1`}
+                value={attachSkillId}
+                onChange={(e) => setAttachSkillId(e.target.value)}
+              >
+                <option value="">Select skill…</option>
+                {(catalog.data ?? [])
+                  .filter(
+                    (s) =>
+                      !(attachedSkills.data ?? []).some((a) => a.skill_id === s.id),
+                  )
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      [{s.domain}] {s.name}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+          </div>
+          <Button
+            disabled={!attachSkillId || attachSkill.isPending}
+            onClick={() => attachSkill.mutate()}
+          >
+            {attachSkill.isPending ? "Attaching…" : "Attach"}
+          </Button>
+        </div>
+      </section>
 
       <section className="mt-6 rounded-2xl border border-[var(--line)] bg-white p-5 shadow-[var(--shadow-sm)]">
         <h2 className="text-[15px] font-semibold">Capabilities</h2>

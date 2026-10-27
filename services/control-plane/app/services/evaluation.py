@@ -140,17 +140,51 @@ async def run_evaluation(
     actor_id: UUID | None = None,
     actor_email: str | None = None,
 ) -> EvaluationRun:
-    cases = data.cases
+    cases = list(data.cases)
     if not cases:
-        cases = [
-            EvaluationCase(
-                case_id="quality-smoke",
-                input={"task": "analyze", "use_sample": True},
-                expected={"summary": "", "issues": []},
-                match_mode="keys",
-                label="Default AD smoke",
+        # Prefer eval suites from attached enterprise skills
+        from app.models.skill import AgentSkill, Skill
+
+        skill_rows = (
+            await db.execute(
+                select(Skill)
+                .join(AgentSkill, AgentSkill.skill_id == Skill.id)
+                .where(
+                    AgentSkill.tenant_id == tenant_id,
+                    AgentSkill.agent_id == data.agent_id,
+                    AgentSkill.is_active.is_(True),
+                    Skill.is_active.is_(True),
+                )
             )
-        ]
+        ).scalars().all()
+        for skill in skill_rows:
+            suite = skill.eval_suite or {}
+            for i, raw in enumerate(suite.get("cases") or []):
+                if not isinstance(raw, dict):
+                    continue
+                expect_contains = raw.get("expect_contains") or []
+                expected = raw.get("expected")
+                if expected is None and expect_contains:
+                    expected = {f"contains_{j}": v for j, v in enumerate(expect_contains)}
+                cases.append(
+                    EvaluationCase(
+                        case_id=str(raw.get("name") or f"{skill.slug}-{i}"),
+                        input=raw.get("input") or skill.sample_input or {},
+                        expected=expected,
+                        match_mode=str(raw.get("match_mode") or "contains"),
+                        label=f"{skill.name}: {raw.get('name') or i}",
+                    )
+                )
+        if not cases:
+            cases = [
+                EvaluationCase(
+                    case_id="quality-smoke",
+                    input={"task": "analyze", "use_sample": True},
+                    expected={"summary": "", "issues": []},
+                    match_mode="keys",
+                    label="Default AD smoke",
+                )
+            ]
 
     # Fill default thresholds from catalog
     thresholds = {d["id"]: float(d["default_threshold"]) for d in DIMENSION_CATALOG}

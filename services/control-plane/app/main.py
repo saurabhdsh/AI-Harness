@@ -25,7 +25,14 @@ async def lifespan(app: FastAPI):
     if settings.auth_demo:
         async with AsyncSessionLocal() as session:
             try:
-                await ensure_demo_admin(session)
+                user = await ensure_demo_admin(session)
+                # Seed Skill Forge catalog for demo tenant (idempotent)
+                if user is not None:
+                    from app.skills.service import ensure_builtin_skills
+                    from app.workflows.service import ensure_builtin_workflows
+
+                    await ensure_builtin_skills(session, user.tenant_id)
+                    await ensure_builtin_workflows(session, user.tenant_id)
                 await session.commit()
             except Exception as exc:
                 await session.rollback()

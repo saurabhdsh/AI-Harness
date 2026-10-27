@@ -14,6 +14,9 @@ from app.schemas.auth import TokenResponse
 
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> TokenResponse:
     settings = get_settings()
+    # Autofill / paste often adds trailing spaces — strip before lookup
+    email = (email or "").strip()
+    password = password or ""
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
@@ -74,4 +77,8 @@ async def ensure_demo_admin(db: AsyncSession) -> User | None:
     )
     db.add(user)
     await db.flush()
+
+    from app.skills.service import ensure_builtin_skills
+
+    await ensure_builtin_skills(db, tenant.id)
     return user

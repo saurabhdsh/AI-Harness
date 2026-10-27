@@ -81,6 +81,16 @@ async def decide_approval(
             actor_id=user.user_id,
             actor_email=user.email,
         )
+    # Workflow Orchestration: resume / fail HITL-gated runs
+    if req.action == "workflow_hitl":
+        from app.workflows import service as wf_svc
+
+        await wf_svc.on_hitl_decided(
+            db,
+            req,
+            actor_id=user.user_id,
+            actor_email=user.email,
+        )
     await db.refresh(req)
     await record_audit(
         db,

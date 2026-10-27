@@ -145,6 +145,11 @@ async def seed() -> None:
         else:
             print(f"Agent exists {agent.id}")
 
+        from app.skills.service import ensure_builtin_skills
+
+        n = await ensure_builtin_skills(db, tenant.id)
+        print(f"Skill Forge built-ins: +{n}")
+
         await db.commit()
         print("Seed complete.")
 

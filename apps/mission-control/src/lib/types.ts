@@ -306,3 +306,182 @@ export type ReleaseBoard = {
   trains: ReleaseTrain[];
   open_promotions: Promotion[];
 };
+
+export type Skill = {
+  id: string;
+  tenant_id: string;
+  slug: string;
+  name: string;
+  domain: string;
+  version: string;
+  description: string | null;
+  instructions: string;
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+  eval_suite: Record<string, unknown>;
+  risk_class: string;
+  tags: string[];
+  sample_input: Record<string, unknown>;
+  is_active: boolean;
+  is_builtin: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentSkillAttachment = {
+  id: string;
+  tenant_id: string;
+  agent_id: string;
+  skill_id: string;
+  config: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  skill?: Skill | null;
+};
+
+export type ReliabilityErrorClass = {
+  class_id: string;
+  label: string;
+  count: number;
+  share: number;
+  sample_error?: string | null;
+};
+
+export type ReliabilityAgentRisk = {
+  agent_id: string;
+  agent_name: string;
+  domain: string | null;
+  health_status: string;
+  total: number;
+  failed: number;
+  succeeded: number;
+  error_rate: number;
+  avg_latency_ms: number | null;
+  last_failure_at: string | null;
+  last_error: string | null;
+};
+
+export type ReliabilityTimelineBucket = {
+  t: string;
+  start: string;
+  ok: number;
+  fail: number;
+  total: number;
+};
+
+export type ReliabilityFailureEvent = {
+  execution_id: string;
+  agent_id: string;
+  agent_name: string;
+  status: string;
+  error: string | null;
+  error_class: string;
+  latency_ms: number | null;
+  created_at: string;
+  trace_id: string | null;
+};
+
+export type ReliabilityLatencyOutlier = {
+  execution_id: string;
+  agent_id: string;
+  agent_name: string;
+  status: string;
+  latency_ms: number;
+  created_at: string;
+};
+
+export type ReliabilityOverview = {
+  window_hours: number;
+  window_start: string;
+  generated_at: string;
+  total_executions: number;
+  succeeded: number;
+  failed: number;
+  running: number;
+  success_rate: number;
+  error_rate: number;
+  avg_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  max_latency_ms: number | null;
+  agents_invoked: number;
+  unhealthy_agents: number;
+  degraded_agents: number;
+  note: string;
+  error_classes: ReliabilityErrorClass[];
+  agents_at_risk: ReliabilityAgentRisk[];
+  timeline: ReliabilityTimelineBucket[];
+  recent_failures: ReliabilityFailureEvent[];
+  latency_outliers: ReliabilityLatencyOutlier[];
+};
+
+export type WorkflowGraphNode = {
+  id: string;
+  type: string;
+  label: string;
+  config?: Record<string, unknown>;
+};
+
+export type WorkflowGraphEdge = {
+  from: string;
+  to: string;
+};
+
+export type WorkflowDefinition = {
+  id: string;
+  tenant_id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  domain: string;
+  version: string;
+  graph: { nodes: WorkflowGraphNode[]; edges: WorkflowGraphEdge[] };
+  sample_input: Record<string, unknown>;
+  tags: string[];
+  is_active: boolean;
+  is_builtin: boolean;
+  created_at: string;
+  updated_at: string;
+  node_count: number;
+  hitl_count: number;
+};
+
+export type WorkflowStep = {
+  id: string;
+  run_id: string;
+  node_id: string;
+  node_type: string;
+  label: string;
+  seq: number;
+  status: string;
+  input_payload: Record<string, unknown>;
+  output_payload: Record<string, unknown> | null;
+  error: string | null;
+  agent_id: string | null;
+  execution_id: string | null;
+  approval_id: string | null;
+  latency_ms: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkflowRun = {
+  id: string;
+  tenant_id: string;
+  definition_id: string;
+  name: string;
+  status: string;
+  input_payload: Record<string, unknown>;
+  context: Record<string, unknown>;
+  agent_bindings: Record<string, string>;
+  current_node_id: string | null;
+  error: string | null;
+  started_by: string | null;
+  pending_approval_id: string | null;
+  created_at: string;
+  updated_at: string;
+  steps: WorkflowStep[];
+  definition_name?: string | null;
+  definition_slug?: string | null;
+  definition_domain?: string | null;
+};

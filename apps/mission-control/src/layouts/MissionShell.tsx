@@ -47,6 +47,7 @@ const links = [
   { to: "/onboarding", label: "Onboarding Studio" },
   { to: "/workbench", label: "Engineering Workbench" },
   { to: "/evaluations", label: "Evaluation Lab" },
+  { to: "/skills", label: "Skill Forge" },
   { to: "/releases", label: "Release Command" },
   { to: "/observatory", label: "Live Observatory" },
   { to: "/finops", label: "FinOps Intelligence" },

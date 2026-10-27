@@ -9,8 +9,10 @@ from app.models.evaluation import EvaluationResult, EvaluationRun
 from app.models.execution import AgentExecution, AgentTrace
 from app.models.policy import Policy
 from app.models.release import Promotion, ReleaseTrain
+from app.models.skill import AgentSkill, Skill
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.models.workflow import WorkflowDefinition, WorkflowRun, WorkflowStep
 
 __all__ = [
     "Tenant",
@@ -29,4 +31,9 @@ __all__ = [
     "Budget",
     "ReleaseTrain",
     "Promotion",
+    "Skill",
+    "AgentSkill",
+    "WorkflowDefinition",
+    "WorkflowRun",
+    "WorkflowStep",
 ]
