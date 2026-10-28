@@ -25,15 +25,15 @@ export function LoginPage() {
           style={{ height: 140, maxWidth: 300, alignSelf: "flex-start", paddingLeft: 24 }}
         />
         <div className="px-12 pb-12">
-          <div className="text-[15px] font-semibold uppercase tracking-[0.24em] text-white/40">
-            Harness Engineering
-          </div>
           <h1
-            className="mt-2 text-5xl font-semibold leading-tight text-white"
+            className="text-5xl font-semibold leading-tight text-white"
             style={{ letterSpacing: "-0.025em" }}
           >
             KEEL
           </h1>
+          <div className="mt-2 text-[12px] font-semibold uppercase tracking-[0.24em] text-white/40">
+            Harness Engineering
+          </div>
           <p className="mt-4 text-[15px] leading-relaxed text-white/50">
             Federated agent engineering.
             <br />

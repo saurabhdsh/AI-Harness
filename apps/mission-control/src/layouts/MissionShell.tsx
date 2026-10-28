@@ -195,15 +195,16 @@ export function MissionShell() {
           <div className={`shrink-0 ${collapsed ? "px-2 py-4" : "px-4 py-5"}`}>
             <div className={`flex items-start ${collapsed ? "flex-col items-center gap-2" : "justify-between gap-2"}`}>
               <div className={collapsed ? "text-center" : "min-w-0"}>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-faint)]">
-                  {collapsed ? "H" : "HARNESS"}
+                <div
+                  className={`font-semibold text-[var(--ink)] ${collapsed ? "text-[15px]" : "text-[20px]"}`}
+                  style={{ letterSpacing: collapsed ? "-0.02em" : "-0.03em" }}
+                  title="KEEL"
+                >
+                  {collapsed ? "K" : "KEEL"}
                 </div>
                 {!collapsed && (
-                  <div
-                    className="mt-0.5 text-[17px] font-semibold text-[var(--ink)]"
-                    style={{ letterSpacing: "-0.022em" }}
-                  >
-                    AI Engineering
+                  <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-faint)]">
+                    Harness Engineering
                   </div>
                 )}
               </div>
@@ -269,10 +270,12 @@ export function MissionShell() {
           <aside className="absolute bottom-0 left-0 top-0 flex w-[min(260px,85vw)] flex-col border-r border-[var(--line)] bg-[var(--bg-muted)] shadow-lg">
             <div className="flex items-center justify-between px-4 py-4">
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-faint)]">
-                  HARNESS
+                <div className="text-[20px] font-semibold text-[var(--ink)]" style={{ letterSpacing: "-0.03em" }}>
+                  KEEL
                 </div>
-                <div className="text-[15px] font-semibold text-[var(--ink)]">AI Engineering</div>
+                <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-faint)]">
+                  Harness Engineering
+                </div>
               </div>
               <button
                 type="button"
