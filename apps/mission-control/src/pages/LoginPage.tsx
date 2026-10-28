@@ -26,18 +26,18 @@ export function LoginPage() {
         />
         <div className="px-12 pb-12">
           <div className="text-[15px] font-semibold uppercase tracking-[0.24em] text-white/40">
-            HARNESS
+            Harness Engineering
           </div>
           <h1
             className="mt-2 text-5xl font-semibold leading-tight text-white"
             style={{ letterSpacing: "-0.025em" }}
           >
-            AI
-            <br />
-            Engineering
+            KEEL
           </h1>
-          <p className="mt-4 text-[15px] text-white/50">
-            Federated agent engineering control plane.
+          <p className="mt-4 text-[15px] leading-relaxed text-white/50">
+            Federated agent engineering.
+            <br />
+            You own the runtime. We hold the line.
           </p>
         </div>
       </section>
@@ -66,7 +66,7 @@ export function LoginPage() {
               Sign in
             </h2>
             <p className="mt-1 text-[14px] text-[#86868b]">
-              Use your Harness credentials to continue.
+              Use your KEEL credentials to continue.
             </p>
           </div>
           <Field label="User">
