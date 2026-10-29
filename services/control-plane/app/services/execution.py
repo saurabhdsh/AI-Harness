@@ -13,6 +13,7 @@ from app.models.agent import Agent
 from app.models.connection import PlatformConnection
 from app.models.cost import CostRecord
 from app.models.execution import AgentExecution, AgentTrace
+from app.services import activity as activity_service
 from app.services.audit import record_audit
 
 
@@ -206,6 +207,14 @@ async def invoke_agent(
             actor_email=actor_email,
             detail={"execution_id": str(execution.id), "error": str(exc)},
         )
+        await activity_service.record_keel_invocation(
+            db,
+            tenant_id=tenant_id,
+            agent_id=agent.id,
+            status=execution.status,
+            latency_ms=execution.latency_ms,
+            invoked_by=actor_id,
+        )
         await db.flush()
         # Do not swallow — return failed execution so API can respond with real error details
         return execution
@@ -219,6 +228,22 @@ async def invoke_agent(
         actor_id=actor_id,
         actor_email=actor_email,
         detail={"execution_id": str(execution.id), "status": execution.status},
+    )
+    tool_n = 0
+    if isinstance(execution.response, dict):
+        spans = execution.response.get("spans")
+        if isinstance(spans, list):
+            tool_n = sum(
+                1 for s in spans if isinstance(s, dict) and "tool" in str(s.get("name", "")).lower()
+            )
+    await activity_service.record_keel_invocation(
+        db,
+        tenant_id=tenant_id,
+        agent_id=agent.id,
+        status=execution.status,
+        latency_ms=execution.latency_ms,
+        invoked_by=actor_id,
+        tool_calls=tool_n,
     )
     await db.flush()
     return execution

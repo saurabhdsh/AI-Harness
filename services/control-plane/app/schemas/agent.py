@@ -21,6 +21,7 @@ class AgentCreate(BaseModel):
     lifecycle_state: str = "draft"
     risk_class: str = "medium"
     connection_id: UUID | None = None
+    blueprint_id: UUID | None = None
     invoke_url: str | None = None
     description: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -40,6 +41,7 @@ class AgentUpdate(BaseModel):
     health_status: str | None = None
     evaluation_status: str | None = None
     connection_id: UUID | None = None
+    blueprint_id: UUID | None = None
     invoke_url: str | None = None
     description: str | None = None
     metadata: dict[str, Any] | None = None
@@ -61,6 +63,7 @@ class AgentOut(ORMModel):
     health_status: str
     evaluation_status: str
     connection_id: UUID | None
+    blueprint_id: UUID | None = None
     invoke_url: str | None
     description: str | None
     metadata: dict[str, Any] = Field(validation_alias="metadata_")

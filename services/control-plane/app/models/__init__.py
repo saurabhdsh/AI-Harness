@@ -1,8 +1,10 @@
 """ORM model registry — import all models for metadata discovery."""
 
+from app.models.activity import AgentActivityDaily
 from app.models.agent import Agent, AgentVersion
 from app.models.approval import ApprovalRequest
 from app.models.audit import AuditEvent
+from app.models.blueprint import AgentBlueprint
 from app.models.connection import PlatformConnection
 from app.models.cost import Budget, CostRecord
 from app.models.evaluation import EvaluationResult, EvaluationRun
@@ -19,6 +21,8 @@ __all__ = [
     "User",
     "Agent",
     "AgentVersion",
+    "AgentActivityDaily",
+    "AgentBlueprint",
     "PlatformConnection",
     "EvaluationRun",
     "EvaluationResult",

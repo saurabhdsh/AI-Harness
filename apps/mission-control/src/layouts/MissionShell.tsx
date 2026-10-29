@@ -11,6 +11,7 @@ import {
   Hammer,
   LayoutDashboard,
   LogOut,
+  Network,
   PanelLeft,
   Radar,
   Scale,
@@ -33,7 +34,8 @@ const links: Array<{
   end?: boolean;
 }> = [
   { to: "/", label: "Mission Control", icon: LayoutDashboard, end: true },
-  { to: "/agents", label: "Agent Universe", icon: Boxes },
+  { to: "/agents", label: "Agent Registry", icon: Boxes },
+  { to: "/platforms", label: "Connected Platforms", icon: Network },
   { to: "/onboarding", label: "Onboarding Studio", icon: ClipboardCheck },
   { to: "/workbench", label: "Engineering Workbench", icon: Hammer },
   { to: "/evaluations", label: "Evaluation Lab", icon: FlaskConical },

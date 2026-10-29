@@ -1,4 +1,4 @@
-"""Agent CRUD, capabilities, and invoke."""
+"""Agent CRUD, capabilities, invoke, and source-platform lifecycle controls."""
 
 from uuid import UUID
 
@@ -16,10 +16,53 @@ from app.schemas.agent import (
     AgentUpdate,
 )
 from app.schemas.common import ErrorOut
+from app.schemas.activity import AgentActivitySummary
+from app.schemas.lifecycle import LifecycleActionRequest, LifecycleActionResult
+from app.services import activity as activity_service
 from app.services import execution as execution_service
+from app.services import lifecycle as lifecycle_service
 from app.services import registry as agent_registry
 
 router = APIRouter()
+
+
+def _lifecycle_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, UnsupportedOperationError):
+        return HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={
+                "detail": str(exc),
+                "error_type": "UnsupportedOperationError",
+                "operation": exc.operation,
+                "connector_type": exc.connector_type,
+            },
+        )
+    if isinstance(exc, LookupError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, (ValueError, PermissionError)):
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+async def _run_lifecycle(
+    agent_id: UUID,
+    operation: str,
+    body: LifecycleActionRequest | None,
+    db: DbSession,
+    user: AuthUser,
+) -> LifecycleActionResult:
+    try:
+        return await lifecycle_service.run_lifecycle(
+            db,
+            tenant_id=user.tenant_id,
+            agent_id=agent_id,
+            operation=operation,
+            body=body or LifecycleActionRequest(),
+            actor_id=user.user_id,
+            actor_email=user.email,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _lifecycle_http_error(exc) from exc
 
 
 @router.get("", response_model=list[AgentOut])
@@ -98,6 +141,25 @@ async def delete_agent(agent_id: UUID, db: DbSession, user: AuthUser) -> None:
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/{agent_id}/activity", response_model=AgentActivitySummary)
+async def get_agent_activity(
+    agent_id: UUID,
+    db: DbSession,
+    user: AuthUser,
+    window_days: int = 30,
+) -> AgentActivitySummary:
+    """Agent 365–style Activity: sessions, exceptions, runtime, users."""
+    try:
+        return await activity_service.agent_activity_summary(
+            db,
+            tenant_id=user.tenant_id,
+            agent_id=agent_id,
+            window_days=max(1, min(window_days, 90)),
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/{agent_id}/capabilities")
@@ -180,45 +242,93 @@ async def invoke_agent(
 
 
 @router.post(
+    "/{agent_id}/lifecycle/{operation}",
+    response_model=LifecycleActionResult,
+    responses={400: {"model": ErrorOut}, 501: {"model": ErrorOut}},
+    summary="Source-platform lifecycle: start|stop|suspend|resume|restart|deploy|rollback|delete_source",
+)
+async def agent_lifecycle(
+    agent_id: UUID,
+    operation: str,
+    db: DbSession,
+    user: AuthUser,
+    body: LifecycleActionRequest | None = None,
+) -> LifecycleActionResult:
+    """KEEL goes beyond Agent 365 read-only connected platforms when the connector supports writes."""
+    return await _run_lifecycle(agent_id, operation, body, db, user)
+
+
+@router.post("/{agent_id}/start", response_model=LifecycleActionResult)
+async def start_agent(
+    agent_id: UUID,
+    db: DbSession,
+    user: AuthUser,
+    body: LifecycleActionRequest | None = None,
+) -> LifecycleActionResult:
+    return await _run_lifecycle(agent_id, "start", body, db, user)
+
+
+@router.post("/{agent_id}/stop", response_model=LifecycleActionResult)
+async def stop_agent(
+    agent_id: UUID,
+    db: DbSession,
+    user: AuthUser,
+    body: LifecycleActionRequest | None = None,
+) -> LifecycleActionResult:
+    return await _run_lifecycle(agent_id, "stop", body, db, user)
+
+
+@router.post("/{agent_id}/restart", response_model=LifecycleActionResult)
+async def restart_agent(
+    agent_id: UUID,
+    db: DbSession,
+    user: AuthUser,
+    body: LifecycleActionRequest | None = None,
+) -> LifecycleActionResult:
+    return await _run_lifecycle(agent_id, "restart", body, db, user)
+
+
+@router.post(
     "/{agent_id}/deploy",
+    response_model=LifecycleActionResult,
     responses={501: {"model": ErrorOut}},
 )
-async def deploy_agent(agent_id: UUID, db: DbSession, user: AuthUser) -> dict:
-    """Explicit unsupported path for connectors that do not implement deploy."""
-    try:
-        agent = await agent_registry.get_agent(
-            db, tenant_id=user.tenant_id, agent_id=agent_id
-        )
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+async def deploy_agent(
+    agent_id: UUID,
+    db: DbSession,
+    user: AuthUser,
+    body: LifecycleActionRequest | None = None,
+) -> LifecycleActionResult:
+    return await _run_lifecycle(agent_id, "deploy", body, db, user)
 
-    if not agent.connection_id:
-        raise HTTPException(
-            status_code=501,
-            detail={
-                "detail": "Deploy requires a platform connection",
-                "error_type": "UnsupportedOperationError",
-                "operation": "deploy",
-                "connector_type": agent.framework,
-            },
-        )
 
-    conn = await db.get(PlatformConnection, agent.connection_id)
-    if conn is None or conn.tenant_id != user.tenant_id:
-        raise HTTPException(status_code=404, detail="Connection not found")
+@router.post(
+    "/{agent_id}/rollback",
+    response_model=LifecycleActionResult,
+    responses={501: {"model": ErrorOut}},
+)
+async def rollback_agent(
+    agent_id: UUID,
+    db: DbSession,
+    user: AuthUser,
+    body: LifecycleActionRequest | None = None,
+) -> LifecycleActionResult:
+    return await _run_lifecycle(agent_id, "rollback", body, db, user)
 
-    connector = get_connector(
-        conn.connector_type, base_url=conn.base_url, secret_ref=conn.secret_ref
-    )
-    try:
-        return await connector.deploy({"agent_id": str(agent.id)})
-    except UnsupportedOperationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail={
-                "detail": str(exc),
-                "error_type": "UnsupportedOperationError",
-                "operation": exc.operation,
-                "connector_type": exc.connector_type,
-            },
-        ) from exc
+
+@router.post(
+    "/{agent_id}/delete-source",
+    response_model=LifecycleActionResult,
+    responses={400: {"model": ErrorOut}, 501: {"model": ErrorOut}},
+    summary="Delete agent in the source platform (approval by default)",
+)
+async def delete_agent_from_source(
+    agent_id: UUID,
+    db: DbSession,
+    user: AuthUser,
+    body: LifecycleActionRequest | None = None,
+) -> LifecycleActionResult:
+    req = body or LifecycleActionRequest()
+    if not req.confirm_delete_source:
+        req = req.model_copy(update={"confirm_delete_source": True})
+    return await _run_lifecycle(agent_id, "delete_source", req, db, user)

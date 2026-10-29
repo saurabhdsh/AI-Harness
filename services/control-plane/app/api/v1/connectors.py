@@ -7,7 +7,15 @@ from sqlalchemy import select
 
 from app.core.deps import AuthUser, DbSession
 from app.models.connection import PlatformConnection
-from app.schemas.connector import ConnectorCreate, ConnectorOut, ConnectorValidateResponse
+from app.schemas.activity import ActivityCollectResult
+from app.schemas.connector import (
+    ConnectorCreate,
+    ConnectorOut,
+    ConnectorSyncResult,
+    ConnectorUpdate,
+    ConnectorValidateResponse,
+)
+from app.services import activity as activity_service
 from app.services import onboarding as onboarding_service
 from app.services.audit import record_audit
 
@@ -39,6 +47,7 @@ async def create_connector(
             base_url=body.base_url,
             secret_ref=body.secret_ref,
             metadata=body.metadata,
+            collect_observability=body.collect_observability,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -83,3 +92,67 @@ async def validate_connector(
         discovered_count=count,
         error=error,
     )
+
+
+@router.patch("/{connector_id}", response_model=ConnectorOut)
+async def update_connector(
+    connector_id: UUID,
+    body: ConnectorUpdate,
+    db: DbSession,
+    user: AuthUser,
+) -> ConnectorOut:
+    conn = await db.get(PlatformConnection, connector_id)
+    if conn is None or conn.tenant_id != user.tenant_id:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    updates = body.model_dump(exclude_unset=True)
+    if "metadata" in updates:
+        conn.metadata_ = updates.pop("metadata") or {}
+    for key, value in updates.items():
+        setattr(conn, key, value)
+    await db.flush()
+    await db.refresh(conn)
+    return ConnectorOut.model_validate(conn)
+
+
+@router.post(
+    "/{connector_id}/sync",
+    response_model=ConnectorSyncResult,
+    summary="Sync agents from connected platform into registry",
+)
+async def sync_connector(
+    connector_id: UUID,
+    db: DbSession,
+    user: AuthUser,
+) -> ConnectorSyncResult:
+    try:
+        return await onboarding_service.sync_connection(
+            db,
+            tenant_id=user.tenant_id,
+            connection_id=connector_id,
+            actor_id=user.user_id,
+            actor_email=user.email,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{connector_id}/collect-observability",
+    response_model=ActivityCollectResult,
+    summary="Pull federated activity telemetry (Agent 365 Collect observability)",
+)
+async def collect_observability(
+    connector_id: UUID,
+    db: DbSession,
+    user: AuthUser,
+) -> ActivityCollectResult:
+    try:
+        return await activity_service.collect_platform_telemetry(
+            db,
+            tenant_id=user.tenant_id,
+            connection_id=connector_id,
+            actor_id=user.user_id,
+            actor_email=user.email,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

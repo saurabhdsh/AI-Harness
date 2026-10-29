@@ -54,8 +54,12 @@ async def upsert_agent_by_external_id(
             existing.environment = data.environment or existing.environment
             if data.lifecycle_state:
                 existing.lifecycle_state = data.lifecycle_state
+            if data.risk_class:
+                existing.risk_class = data.risk_class
             if data.connection_id is not None:
                 existing.connection_id = data.connection_id
+            if data.blueprint_id is not None:
+                existing.blueprint_id = data.blueprint_id
             if data.invoke_url:
                 existing.invoke_url = data.invoke_url
             if data.description is not None:
@@ -117,6 +121,7 @@ async def create_agent(
         lifecycle_state=data.lifecycle_state,
         risk_class=data.risk_class,
         connection_id=data.connection_id,
+        blueprint_id=data.blueprint_id,
         invoke_url=data.invoke_url,
         description=data.description,
         metadata_=data.metadata,
@@ -245,6 +250,7 @@ def agent_to_dict(agent: Agent) -> dict[str, Any]:
         "health_status": agent.health_status,
         "evaluation_status": agent.evaluation_status,
         "connection_id": agent.connection_id,
+        "blueprint_id": agent.blueprint_id,
         "invoke_url": agent.invoke_url,
         "description": agent.description,
         "metadata_": agent.metadata_,

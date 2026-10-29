@@ -202,7 +202,19 @@ class GenericRESTConnector:
         )
 
     async def get_telemetry(self, external_id: str) -> dict[str, Any]:
-        raise UnsupportedOperationError("get_telemetry", self.connector_type)
+        # No native platform metrics — Activity UI uses KEEL invoke rollups.
+        return {
+            "sessions": 0,
+            "exceptions": 0,
+            "runtime_seconds": 0,
+            "unique_users": 0,
+            "tool_calls": 0,
+            "invocations": 0,
+            "daily": [],
+            "provider": self.connector_type,
+            "available": False,
+            "notes": ["Platform does not expose federated telemetry; KEEL invoke activity still applies."],
+        }
 
     async def deploy(self, payload: dict[str, Any]) -> dict[str, Any]:
         raise UnsupportedOperationError("deploy", self.connector_type)

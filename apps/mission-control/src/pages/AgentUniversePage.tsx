@@ -29,7 +29,7 @@ export function AgentUniversePage() {
   const filtered = useMemo(() => {
     const rows = agents.data ?? [];
     return rows.filter((a) => {
-      const hay = `${a.name} ${a.platform} ${a.framework} ${a.owner ?? ""} ${a.team ?? ""}`.toLowerCase();
+      const hay = `${a.name} ${a.platform} ${a.framework} ${a.external_id ?? ""} ${a.owner ?? ""} ${a.team ?? ""} ${a.invoke_url ?? ""}`.toLowerCase();
       if (q && !hay.includes(q.toLowerCase())) return false;
       if (domain && (a.domain ?? "").toLowerCase() !== domain.toLowerCase()) return false;
       if (lifecycle && a.lifecycle_state.toLowerCase() !== lifecycle.toLowerCase()) return false;
@@ -51,9 +51,9 @@ export function AgentUniversePage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Registry"
-        title="Agent Universe"
-        subtitle="Search, filter, and explore every registered agent."
+        eyebrow="Registry inventory"
+        title="Agent Registry"
+        subtitle="Cross-platform inventory keyed by external_id + invoke_url. Sync from Connected Platforms or CI register after deploy."
       />
 
       <div className="mb-6 flex flex-wrap items-end gap-3">
@@ -114,7 +114,7 @@ export function AgentUniversePage() {
       {agents.data && filtered.length === 0 && (
         <EmptyState
           title="No agents match"
-          body="Adjust filters, or onboard agents from Onboarding Studio."
+          body="Adjust filters, or register via CI / Connected Platforms sync."
         />
       )}
 
@@ -128,15 +128,22 @@ export function AgentUniversePage() {
             <thead className="border-b border-[var(--line)] bg-[var(--bg-muted)] text-[11px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
               <tr>
                 <th className="px-4 py-3 font-semibold">Agent</th>
+                <th className="px-4 py-3 font-semibold">External ID</th>
+                <th className="px-4 py-3 font-semibold">Invoke</th>
                 <th className="px-4 py-3 font-semibold">Domain</th>
                 <th className="px-4 py-3 font-semibold">Lifecycle</th>
-                <th className="px-4 py-3 font-semibold">Health</th>
-                <th className="px-4 py-3 font-semibold">Eval</th>
+                <th className="px-4 py-3 font-semibold">Source</th>
                 <th className="px-4 py-3 font-semibold">Platform</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((a) => (
+              {filtered.map((a) => {
+                const src = String(
+                  (a.metadata?.source as string) ||
+                    (a.metadata?.blueprint_slug as string) ||
+                    "—",
+                );
+                return (
                 <tr key={a.id} className="border-b border-[var(--line-soft)] last:border-0">
                   <td className="px-4 py-3">
                     <Link
@@ -149,21 +156,23 @@ export function AgentUniversePage() {
                       {a.owner ?? "—"} · {a.environment}
                     </div>
                   </td>
+                  <td className="px-4 py-3 font-mono text-[11px] text-[var(--ink-muted)]">
+                    {a.external_id ?? "—"}
+                  </td>
+                  <td className="max-w-[180px] truncate px-4 py-3 font-mono text-[11px] text-[var(--ink-muted)]" title={a.invoke_url ?? ""}>
+                    {a.invoke_url ?? "—"}
+                  </td>
                   <td className="px-4 py-3 text-[var(--ink-muted)]">{a.domain ?? "—"}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={a.lifecycle_state} />
                   </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={a.health_status} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={a.evaluation_status} />
-                  </td>
+                  <td className="px-4 py-3 font-mono text-[11px] text-[var(--ink-muted)]">{src}</td>
                   <td className="px-4 py-3 font-mono text-[11px] text-[var(--ink-muted)]">
                     {a.platform}/{a.framework}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

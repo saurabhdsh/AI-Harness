@@ -1,6 +1,6 @@
-"""Agent and AgentVersion models."""
+"""Agent and AgentVersion models — registry inventory (Agent 365 registration)."""
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy import JSON
 from sqlalchemy.types import Uuid as UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -9,7 +9,12 @@ from app.db.base import Base, TenantScopedMixin, TimestampMixin, UUIDPrimaryKeyM
 
 
 class Agent(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Registry inventory record. Identity key = (tenant_id, external_id)."""
+
     __tablename__ = "agents"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "external_id", name="uq_agents_tenant_external_id"),
+    )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     platform: Mapped[str] = mapped_column(String(128), nullable=False, default="generic")
@@ -34,12 +39,19 @@ class Agent(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
         nullable=True,
         index=True,
     )
+    blueprint_id: Mapped[object | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agent_blueprints.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     invoke_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
 
     tenant = relationship("Tenant", back_populates="agents")
     connection = relationship("PlatformConnection", back_populates="agents")
+    blueprint = relationship("AgentBlueprint", back_populates="agents")
     versions = relationship(
         "AgentVersion",
         back_populates="agent",

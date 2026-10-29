@@ -91,6 +91,27 @@ async def decide_approval(
             actor_id=user.user_id,
             actor_email=user.email,
         )
+    # Source-platform delete (beyond Agent 365 read-only)
+    if req.action == "agent.delete_source" and body.status == "approved" and req.agent_id:
+        from app.schemas.lifecycle import LifecycleActionRequest
+        from app.services import lifecycle as lifecycle_svc
+
+        payload = req.payload or {}
+        await lifecycle_svc.run_lifecycle(
+            db,
+            tenant_id=user.tenant_id,
+            agent_id=req.agent_id,
+            operation="delete_source",
+            body=LifecycleActionRequest(
+                confirm_delete_source=True,
+                create_approval=False,
+                remove_from_registry=bool(payload.get("remove_from_registry")),
+                justification=req.justification,
+                alias_id=payload.get("alias_id"),
+            ),
+            actor_id=user.user_id,
+            actor_email=user.email,
+        )
     await db.refresh(req)
     await record_audit(
         db,

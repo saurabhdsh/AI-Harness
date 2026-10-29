@@ -22,6 +22,49 @@ export type MissionOverview = {
   failed_executions_24h: number;
   pending_approvals: number;
   total_cost_usd: number;
+  active_users_30d?: number;
+  agent_runtime_hours_30d?: number;
+  registry_sync?: {
+    connected_platforms: number;
+    platforms_synced: number;
+    collect_observability_enabled: number;
+    platforms: Array<{
+      id: string;
+      name: string;
+      connector_type: string;
+      last_synced_at: string | null;
+      last_sync_status: string | null;
+      synced_agent_count: number;
+      collect_observability: boolean;
+    }>;
+  };
+  agents_without_owners?: number;
+  sessions_30d?: number;
+  exceptions_30d?: number;
+};
+
+export type AgentActivitySummary = {
+  agent_id: string;
+  window_days: number;
+  sessions: number;
+  exceptions: number;
+  runtime_seconds: number;
+  runtime_hours: number;
+  unique_users: number;
+  tool_calls: number;
+  invocations: number;
+  by_source: Record<string, Record<string, number>>;
+  daily: Array<{
+    day: string;
+    source: string;
+    sessions: number;
+    exceptions: number;
+    runtime_seconds: number;
+    unique_users: number;
+    tool_calls: number;
+    invocations: number;
+  }>;
+  note: string | null;
 };
 
 export type Agent = {
@@ -40,8 +83,25 @@ export type Agent = {
   health_status: string;
   evaluation_status: string;
   connection_id: string | null;
+  blueprint_id?: string | null;
   invoke_url: string | null;
   description: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentBlueprint = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  connector_type: string;
+  framework: string;
+  default_domain: string | null;
+  default_risk_class: string;
+  permissions: Record<string, unknown>;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -244,9 +304,35 @@ export type Connector = {
   capabilities: Record<string, unknown>;
   status: string;
   last_error: string | null;
+  last_synced_at?: string | null;
+  last_sync_status?: string | null;
+  last_sync_error?: string | null;
+  synced_agent_count?: number;
+  collect_observability?: boolean;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+};
+
+export type ConnectorSyncResult = {
+  connection_id: string;
+  discovered: Record<string, unknown>[];
+  registered_agent_ids: string[];
+  updated_agent_ids: string[];
+  status: string;
+  error: string | null;
+};
+
+export type LifecycleActionResult = {
+  agent_id: string;
+  operation: string;
+  status: string;
+  connector_type: string | null;
+  external_id: string | null;
+  lifecycle_state: string | null;
+  approval_id: string | null;
+  detail: Record<string, unknown>;
+  error: string | null;
 };
 
 export type ReleaseGate = {

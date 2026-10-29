@@ -27,6 +27,9 @@ class CapabilityManifest(BaseModel):
     deployment: bool = False
     rollback: bool = False
     suspension: bool = False
+    resume: bool = False
+    restart: bool = False
+    delete_source: bool = False
     tool_inspection: bool = False
     credential_requirements: list[str] = Field(default_factory=list)
     restrictions: list[str] = Field(default_factory=list)
@@ -77,5 +80,11 @@ class AgentConnector(Protocol):
     async def rollback(self, external_id: str, version: str) -> dict[str, Any]: ...
 
     async def suspend(self, external_id: str) -> dict[str, Any]: ...
+
+    async def resume(self, external_id: str) -> dict[str, Any]: ...
+
+    async def restart(self, external_id: str) -> dict[str, Any]: ...
+
+    async def delete_from_source(self, external_id: str) -> dict[str, Any]: ...
 
     async def inspect_tools(self, external_id: str) -> list[dict[str, Any]]: ...

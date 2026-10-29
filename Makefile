@@ -1,4 +1,4 @@
-.PHONY: setup setup-local dev dev-local stop-local domain-agents register-domain-agents test lint migrate seed-demo smoke-test down logs build
+.PHONY: setup setup-local dev dev-local stop-local domain-agents register-domain-agents ci-register-agent catalog-sync test lint migrate seed-demo smoke-test down logs build
 
 setup:
 	@echo "==> Installing control-plane deps"
@@ -37,6 +37,7 @@ domain-agents:
 	fi
 	cd examples/domain-agents && . .venv/bin/activate && uvicorn main:app --host 127.0.0.1 --port 8091
 
+# Prefer catalog / CI register (Agent 365–style) — not raw POST /agents
 register-domain-agents:
 	chmod +x scripts/register-domain-agents.sh
 	./scripts/register-domain-agents.sh
@@ -45,6 +46,11 @@ register-domain-agents:
 ci-register-agent:
 	chmod +x scripts/ci-register-agent.sh
 	./scripts/ci-register-agent.sh
+
+# Sync examples/catalog (or CATALOG_FILE) into the registry
+catalog-sync:
+	chmod +x scripts/catalog-sync.sh
+	./scripts/catalog-sync.sh
 
 build:
 	docker compose build

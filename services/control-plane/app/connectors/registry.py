@@ -6,6 +6,7 @@ from typing import Any
 
 from app.connectors.aws_bedrock import AWSBedrockConnector
 from app.connectors.azure_foundry import AzureFoundryConnector
+from app.connectors.copilot_studio import CopilotStudioConnector
 from app.connectors.crewai import CrewAIConnector
 from app.connectors.generic_rest import GenericRESTConnector
 from app.connectors.langgraph import LangGraphConnector
@@ -23,6 +24,11 @@ _REGISTRY: dict[str, type] = {
     "azure_foundry": AzureFoundryConnector,
     "azure": AzureFoundryConnector,
     "microsoft_foundry": AzureFoundryConnector,
+    "copilot_studio": CopilotStudioConnector,
+    "copilotstudio": CopilotStudioConnector,
+    "microsoft_copilot_studio": CopilotStudioConnector,
+    "power_virtual_agents": CopilotStudioConnector,
+    "pva": CopilotStudioConnector,
     "servicenow": ServiceNowConnector,
     "service_now": ServiceNowConnector,
     "sn": ServiceNowConnector,
@@ -40,6 +46,7 @@ def list_connector_types() -> list[dict[str, str]]:
         "generic_rest": "Generic REST / OpenAPI agent services",
         "aws_bedrock": "AWS Bedrock Agents (requires AWS credentials)",
         "azure_foundry": "Azure AI Foundry / Agents (requires Azure credentials)",
+        "copilot_studio": "Microsoft Copilot Studio (Dataverse / Power Platform environment)",
         "servicenow": "ServiceNow AI Agents / Agent Studio (instance credentials)",
         "mulesoft": "MuleSoft Agent Fabric / Anypoint (OAuth + runtime URL)",
     }
@@ -55,6 +62,10 @@ def list_connector_types() -> list[dict[str, str]]:
             "bedrock",
             "azure",
             "microsoft_foundry",
+            "copilotstudio",
+            "microsoft_copilot_studio",
+            "power_virtual_agents",
+            "pva",
             "service_now",
             "sn",
             "mule",

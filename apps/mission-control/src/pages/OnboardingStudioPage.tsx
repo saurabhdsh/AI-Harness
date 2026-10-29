@@ -13,7 +13,7 @@ import type {
   Trace,
 } from "../lib/types";
 
-type Source = "path" | "upload" | "cloud" | "ci";
+type Source = "path" | "upload" | "ci" | "catalog";
 type Phase = "source" | "detect" | "configure" | "running" | "complete" | "failed";
 
 type Detection = {
@@ -54,9 +54,15 @@ const DEFAULT_PATH =
 export function OnboardingStudioPage() {
   const qc = useQueryClient();
   const [phase, setPhase] = useState<Phase>("source");
-  const [source, setSource] = useState<Source>("path");
+  const [source, setSource] = useState<Source>("ci");
   const [path, setPath] = useState(DEFAULT_PATH);
   const [file, setFile] = useState<File | null>(null);
+  const [catalogName, setCatalogName] = useState("domain-agents-catalog");
+  const [catalogJson, setCatalogJson] = useState(
+    '[\n  {"name": "AD User Story Author", "external_id": "ad-user-story", "invoke_url": "http://127.0.0.1:8091/agents/ad-user-story/invoke", "domain": "AD"}\n]',
+  );
+  const [catalogDiscover, setCatalogDiscover] = useState(true);
+  const [showLab, setShowLab] = useState(false);
   const [detection, setDetection] = useState<Detection | null>(null);
   const [detectError, setDetectError] = useState("");
   const [detecting, setDetecting] = useState(false);
@@ -110,12 +116,6 @@ export function OnboardingStudioPage() {
     [statuses, details],
   );
 
-  const isCloudConnector =
-    connectorType === "aws_bedrock" ||
-    connectorType === "azure_foundry" ||
-    connectorType === "servicenow" ||
-    connectorType === "mulesoft";
-
   const mark = (id: string, status: FlowStepStatus, detail?: string) => {
     setStatuses((prev) => ({ ...prev, [id]: status }));
     if (detail !== undefined) setDetails((prev) => ({ ...prev, [id]: detail }));
@@ -155,22 +155,28 @@ export function OnboardingStudioPage() {
           frameworks: [{ id: connectorType || "generic_rest", score: 1 }],
           notes: [
             "Git / CI path — agent was built from a repo and deployed by your pipeline.",
-            "Harness registers the deployed invoke URL (upsert by external_id). No local folder scan.",
+            "KEEL registers the deployed invoke URL (upsert by external_id). No local folder scan.",
             "Prefer calling POST /api/v1/onboarding/ci/register from CI after deploy.",
           ],
         };
         if (!name) setName("CI-registered agent");
         if (!connectorType) setConnectorType("generic_rest");
         setConnectorType((c) => c || "generic_rest");
-      } else {
+      } else if (source === "catalog") {
         result = {
-          primary: connectorType,
-          recommended_connector: connectorType,
+          primary: connectorType || "generic_rest",
+          recommended_connector: connectorType || "generic_rest",
           confidence: 1,
-          frameworks: [{ id: connectorType, score: 1 }],
-          notes: ["Cloud platform selected — provide endpoint / credentials next."],
-          cloud_targets: [connectorType],
+          frameworks: [{ id: connectorType || "generic_rest", score: 1 }],
+          notes: [
+            "Catalog sync — Agent 365–style fleet inventory from a deployed base URL and/or explicit agent list.",
+            "Upserts each agent by external_id into the registry.",
+          ],
         };
+        if (!name) setName(catalogName || "Catalog sync");
+        setConnectorType((c) => c || "generic_rest");
+      } else {
+        throw new Error("Choose CI register, Catalog sync, or Lab (path / zip)");
       }
 
       setDetection(result);
@@ -216,8 +222,129 @@ export function OnboardingStudioPage() {
           ? `${detection.primary} · confidence ${Math.round((detection.confidence ?? 0) * 100)}%`
           : source === "ci"
             ? "CI / Git deploy provenance"
-            : "Cloud / manual connector",
+            : source === "catalog"
+              ? "Catalog / connected fleet sync"
+              : "Cloud / manual connector",
       );
+
+      // Catalog sync — Agent 365–style inventory pull
+      if (source === "catalog") {
+        mark("connect", "active", "Catalog sync");
+        mark("discover", "active", "Upsert by external_id");
+        let agents: Array<{
+          name: string;
+          external_id: string;
+          invoke_url?: string;
+          domain?: string;
+        }> = [];
+        try {
+          agents = JSON.parse(catalogJson) as typeof agents;
+          if (!Array.isArray(agents)) throw new Error("agents must be a JSON array");
+        } catch (err) {
+          throw new Error(
+            err instanceof Error ? `Invalid agents JSON: ${err.message}` : "Invalid agents JSON",
+          );
+        }
+        const sync = await api<{
+          connection_id: string;
+          registered_agent_ids: string[];
+          updated_agent_ids: string[];
+          status: string;
+          error?: string | null;
+        }>("/api/v1/onboarding/catalog/sync", {
+          method: "POST",
+          body: JSON.stringify({
+            name: catalogName || name || "catalog",
+            connector_type: connectorType || "generic_rest",
+            base_url: baseUrl,
+            secret_ref: secretRef || null,
+            agents,
+            discover: catalogDiscover,
+            domain,
+            environment,
+            owner,
+            team,
+            git_repo: gitRepo || null,
+            git_ref: gitRef || null,
+            git_sha: gitSha || null,
+          }),
+        });
+        if (sync.status !== "completed") {
+          throw new Error(sync.error || "Catalog sync failed");
+        }
+        const id = sync.registered_agent_ids[0] || sync.updated_agent_ids[0];
+        if (!id) throw new Error("Catalog sync returned no agents");
+        setAgentId(id);
+        mark(
+          "connect",
+          "done",
+          `Connection ${sync.connection_id.slice(0, 8)}…`,
+        );
+        mark(
+          "discover",
+          "done",
+          `+${sync.registered_agent_ids.length} / ~${sync.updated_agent_ids.length}`,
+        );
+
+        mark("invoke", "active", "Smoke invoke via registered URL");
+        setInvokePending(true);
+        const invocation = await api<AgentInvokeResponse>(`/api/v1/agents/${id}/invoke`, {
+          method: "POST",
+          body: JSON.stringify({
+            input: { task: "analyze", use_sample: true },
+            config: {},
+          }),
+        });
+        setInvokeResult(invocation);
+        setInvokePending(false);
+        if (invocation.status !== "succeeded") {
+          mark("invoke", "error", invocation.error || "Invoke failed");
+          throw new Error(invocation.error || "Invoke failed");
+        }
+        mark("invoke", "done", `${invocation.latency_ms ?? "—"} ms`);
+
+        if (invocation.trace_id) {
+          mark("trace", "active", invocation.trace_id);
+          const t = await api<Trace>(`/api/v1/traces/${invocation.trace_id}`);
+          setTrace(t);
+          mark("trace", "done", `${t.spans?.length ?? 0} spans`);
+        } else {
+          mark("trace", "done", "No trace id");
+        }
+
+        mark("evaluate", "active", "Smoke eval");
+        const evaluation = await api<EvaluationRun>("/api/v1/evaluations/runs", {
+          method: "POST",
+          body: JSON.stringify({
+            agent_id: id,
+            name: `catalog-smoke-${Date.now()}`,
+            suite: "smoke",
+            cases: [
+              {
+                name: "sample",
+                input: { task: "analyze", use_sample: true },
+                expected: {},
+              },
+            ],
+          }),
+        });
+        setEvalRun(evaluation);
+        mark(
+          "evaluate",
+          evaluation.status === "completed" ? "done" : "error",
+          `score ${evaluation.aggregate_score ?? "—"} · ${evaluation.summary ?? evaluation.status}`,
+        );
+        if (evaluation.status !== "completed") throw new Error(evaluation.error || "Evaluation failed");
+
+        mark("govern", "active", "Mission refresh");
+        await qc.invalidateQueries({ queryKey: ["mission-overview"] });
+        await qc.invalidateQueries({ queryKey: ["agents"] });
+        await qc.invalidateQueries({ queryKey: ["connectors"] });
+        await sleep(250);
+        mark("govern", "done", "Agents visible in Registry");
+        setPhase("complete");
+        return;
+      }
 
       // Enterprise CI path — upsert deployed agent by external_id (no local folder)
       if (source === "ci") {
@@ -297,7 +424,7 @@ export function OnboardingStudioPage() {
         return;
       }
 
-      mark("connect", "active", isCloudConnector ? "Authenticating cloud connector" : `GET ${baseUrl}/health`);
+      mark("connect", "active", `GET ${baseUrl}/health`);
       await sleep(300);
 
       mark("discover", "active", "Registering into control-plane registry");
@@ -309,7 +436,7 @@ export function OnboardingStudioPage() {
           project_root: source === "path" ? path : detection?.project_root || detection?.root || null,
           upload_id: detection?.upload_id || null,
           connector_type: connectorType,
-          base_url: isCloudConnector && connectorType === "aws_bedrock" ? baseUrl || "" : baseUrl,
+          base_url: baseUrl,
           secret_ref: secretRef || null,
           external_id: externalId || null,
           auto_register: true,
@@ -335,17 +462,6 @@ export function OnboardingStudioPage() {
       );
 
       if (!job.registered_agent_ids.length) {
-        if (isCloudConnector) {
-          mark("invoke", "done", "Skipped — cloud agent registered without HTTP smoke (credentials/discovery only)");
-          mark("trace", "done", "Skipped");
-          mark("evaluate", "done", "Skipped");
-          mark("govern", "active", "Refreshing mission");
-          await qc.invalidateQueries({ queryKey: ["mission-overview"] });
-          await qc.invalidateQueries({ queryKey: ["agents"] });
-          mark("govern", "done", "Registry updated");
-          setPhase("complete");
-          return;
-        }
         throw new Error("No agents registered");
       }
 
@@ -407,7 +523,7 @@ export function OnboardingStudioPage() {
       await qc.invalidateQueries({ queryKey: ["mission-overview"] });
       await qc.invalidateQueries({ queryKey: ["agents"] });
       await sleep(250);
-      mark("govern", "done", "Agent visible in Universe + Observatory");
+      mark("govern", "done", "Agent visible in Registry + Observatory");
       setPhase("complete");
     } catch (err) {
       setInvokePending(false);
@@ -419,9 +535,9 @@ export function OnboardingStudioPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Ingest"
+        eyebrow="Registry onboard"
         title="Onboarding Studio"
-        subtitle="Enterprise path: register Git-built agents after CI/CD deploy. Lab path: detect a local project or zip. Cloud path: connect Bedrock / Foundry / ServiceNow."
+        subtitle="CI post-deploy register or catalog sync (external_id + invoke_url). Cloud platforms live under Connected Platforms. Lab: local path or zip only."
       />
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -433,13 +549,17 @@ export function OnboardingStudioPage() {
             <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-muted)]">
               1 · Source
             </div>
+            <p className="mb-3 text-[13px] text-[var(--ink-muted)]">
+              External cloud platforms (Bedrock, Foundry, ServiceNow, …):{" "}
+              <Link to="/platforms" className="font-medium text-[var(--accent)] hover:underline">
+                Connected Platforms → Connect → Validate → Sync
+              </Link>
+            </p>
             <div className="mb-4 flex flex-wrap gap-2">
               {(
                 [
-                  ["ci", "Git / CI deploy"],
-                  ["path", "Project path"],
-                  ["upload", "Upload zip"],
-                  ["cloud", "Cloud platform"],
+                  ["ci", "CI register"],
+                  ["catalog", "Catalog sync"],
                 ] as const
               ).map(([id, label]) => (
                 <button
@@ -450,7 +570,8 @@ export function OnboardingStudioPage() {
                     setSource(id);
                     setPhase("source");
                     setDetection(null);
-                    if (id === "ci") setConnectorType("generic_rest");
+                    setShowLab(false);
+                    setConnectorType("generic_rest");
                   }}
                   className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
                     source === id
@@ -461,7 +582,58 @@ export function OnboardingStudioPage() {
                   {label}
                 </button>
               ))}
+              <button
+                type="button"
+                disabled={phase === "running"}
+                onClick={() => {
+                  setShowLab((v) => !v);
+                  if (!showLab) {
+                    setSource("path");
+                    setPhase("source");
+                    setDetection(null);
+                  }
+                }}
+                className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
+                  source === "path" || source === "upload"
+                    ? "bg-[#0071e3] text-white"
+                    : "border border-dashed border-[var(--line)] text-[var(--ink-faint)]"
+                }`}
+              >
+                Lab (path / zip)
+              </button>
             </div>
+
+            {(showLab || source === "path" || source === "upload") && (
+              <div className="mb-4 flex flex-wrap gap-2">
+                {(
+                  [
+                    ["path", "Project path"],
+                    ["upload", "Upload zip"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={phase === "running"}
+                    onClick={() => {
+                      setSource(id);
+                      setPhase("source");
+                      setDetection(null);
+                    }}
+                    className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
+                      source === id
+                        ? "bg-[var(--ink)] text-white"
+                        : "bg-[var(--bg-muted)] text-[var(--ink-muted)]"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <p className="w-full text-[12px] text-[var(--ink-faint)]">
+                  Lab only — local detect on the control-plane host. Prefer CI or catalog for real registry.
+                </p>
+              </div>
+            )}
 
             {source === "ci" && (
               <div className="space-y-3">
@@ -519,6 +691,49 @@ export function OnboardingStudioPage() {
                 </Field>
               </div>
             )}
+            {source === "catalog" && (
+              <div className="space-y-3">
+                <p className="text-[13px] text-[var(--ink-muted)]">
+                  Sync a deployed fleet into the registry — discover from base URL and/or paste an explicit
+                  agent list. Idempotent on <span className="font-mono">external_id</span>.
+                </p>
+                <Field label="Catalog / connection name">
+                  <input
+                    className={inputClass}
+                    value={catalogName}
+                    disabled={phase === "running"}
+                    onChange={(e) => setCatalogName(e.target.value)}
+                    placeholder="domain-agents-catalog"
+                  />
+                </Field>
+                <Field label="Base URL">
+                  <input
+                    className={inputClass}
+                    value={baseUrl}
+                    disabled={phase === "running"}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder="https://agents.example.com"
+                  />
+                </Field>
+                <label className="flex items-center gap-2 text-[13px] text-[var(--ink-muted)]">
+                  <input
+                    type="checkbox"
+                    checked={catalogDiscover}
+                    disabled={phase === "running"}
+                    onChange={(e) => setCatalogDiscover(e.target.checked)}
+                  />
+                  Discover agents from base URL
+                </label>
+                <Field label="Agents JSON array (explicit entries win over discover)">
+                  <textarea
+                    className={`${inputClass} min-h-[120px] font-mono text-[12px]`}
+                    value={catalogJson}
+                    disabled={phase === "running"}
+                    onChange={(e) => setCatalogJson(e.target.value)}
+                  />
+                </Field>
+              </div>
+            )}
             {source === "path" && (
               <Field label="Absolute path to agent project">
                 <input
@@ -541,24 +756,6 @@ export function OnboardingStudioPage() {
                 />
               </Field>
             )}
-            {source === "cloud" && (
-              <Field label="Cloud connector">
-                <select
-                  className={inputClass}
-                  value={connectorType}
-                  disabled={phase === "running"}
-                  onChange={(e) => setConnectorType(e.target.value)}
-                >
-                  <option value="aws_bedrock">AWS Bedrock Agents</option>
-                  <option value="azure_foundry">Azure AI Foundry</option>
-                  <option value="servicenow">ServiceNow AI Agents</option>
-                  <option value="mulesoft">MuleSoft Agent Fabric</option>
-                  <option value="langgraph">LangGraph HTTP (self-hosted)</option>
-                  <option value="crewai">CrewAI HTTP</option>
-                  <option value="generic_rest">Generic REST</option>
-                </select>
-              </Field>
-            )}
 
             <div className="mt-4">
               <Button onClick={() => void runDetect()} disabled={detecting || phase === "running"}>
@@ -566,7 +763,9 @@ export function OnboardingStudioPage() {
                   ? "Analyzing…"
                   : source === "ci"
                     ? "Continue with CI provenance"
-                    : "Detect framework"}
+                    : source === "catalog"
+                      ? "Continue with catalog sync"
+                      : "Detect framework"}
               </Button>
             </div>
             {detectError && <p className="mt-3 text-[13px] text-red-600">{detectError}</p>}
@@ -643,15 +842,16 @@ export function OnboardingStudioPage() {
                     disabled={phase === "running"}
                     onChange={(e) => setConnectorType(e.target.value)}
                   >
-                    {(frameworks.data?.connectors ?? [
-                      { id: "langgraph", label: "LangGraph" },
-                      { id: "crewai", label: "CrewAI" },
-                      { id: "generic_rest", label: "Generic REST" },
-                      { id: "aws_bedrock", label: "AWS Bedrock" },
-                      { id: "azure_foundry", label: "Azure Foundry" },
-                      { id: "servicenow", label: "ServiceNow AI Agents" },
-                      { id: "mulesoft", label: "MuleSoft Agent Fabric" },
-                    ]).map((c) => (
+                    {(
+                      frameworks.data?.connectors?.filter(
+                        (c) =>
+                          !["aws_bedrock", "azure_foundry", "servicenow", "mulesoft"].includes(c.id),
+                      ) ?? [
+                        { id: "langgraph", label: "LangGraph" },
+                        { id: "crewai", label: "CrewAI" },
+                        { id: "generic_rest", label: "Generic REST" },
+                      ]
+                    ).map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.label}
                       </option>
@@ -659,7 +859,7 @@ export function OnboardingStudioPage() {
                   </select>
                 </Field>
 
-                {!isCloudConnector && source !== "ci" && (
+                {source !== "ci" && source !== "catalog" && (
                   <Field label="Running agent base URL">
                     <input
                       className={inputClass}
@@ -696,71 +896,6 @@ export function OnboardingStudioPage() {
                         onChange={(e) => setBaseUrl(e.target.value)}
                         disabled={phase === "running"}
                         placeholder="Derived from invoke URL if empty"
-                      />
-                    </Field>
-                  </>
-                )}
-
-                {connectorType === "azure_foundry" && (
-                  <Field label="Azure AI project endpoint">
-                    <input
-                      className={inputClass}
-                      value={baseUrl}
-                      onChange={(e) => setBaseUrl(e.target.value)}
-                      disabled={phase === "running"}
-                      placeholder="https://<resource>.services.ai.azure.com/api/projects/<project>"
-                    />
-                  </Field>
-                )}
-
-                {connectorType === "servicenow" && (
-                  <Field label="ServiceNow instance URL">
-                    <input
-                      className={inputClass}
-                      value={baseUrl}
-                      onChange={(e) => setBaseUrl(e.target.value)}
-                      disabled={phase === "running"}
-                      placeholder="https://<instance>.service-now.com"
-                    />
-                  </Field>
-                )}
-
-                {connectorType === "mulesoft" && (
-                  <Field label="MuleSoft Agent Fabric / runtime base URL">
-                    <input
-                      className={inputClass}
-                      value={baseUrl}
-                      onChange={(e) => setBaseUrl(e.target.value)}
-                      disabled={phase === "running"}
-                      placeholder="https://<agent-fabric-or-api>.example.com"
-                    />
-                  </Field>
-                )}
-
-                {isCloudConnector && (
-                  <>
-                    <Field label="Secret reference (Vault) — no plaintext secrets">
-                      <input
-                        className={inputClass}
-                        value={secretRef}
-                        onChange={(e) => setSecretRef(e.target.value)}
-                        disabled={phase === "running"}
-                        placeholder={
-                          connectorType === "servicenow"
-                            ? "basic:user:pass or bearer:<token> or vault:tenant/sn"
-                            : connectorType === "mulesoft"
-                              ? "oauth:<client_id>:<client_secret> or vault:tenant/mule"
-                              : "vault:tenant/aws or vault:tenant/azure"
-                        }
-                      />
-                    </Field>
-                    <Field label="External agent id (optional if discovery works)">
-                      <input
-                        className={inputClass}
-                        value={externalId}
-                        onChange={(e) => setExternalId(e.target.value)}
-                        disabled={phase === "running"}
-                        placeholder="Bedrock agent id / Foundry agent id"
                       />
                     </Field>
                   </>

@@ -3,6 +3,7 @@ import { MissionShell } from "./layouts/MissionShell";
 import { AdminPage } from "./pages/AdminPage";
 import { AgentProfilePage } from "./pages/AgentProfilePage";
 import { AgentUniversePage } from "./pages/AgentUniversePage";
+import { ConnectedPlatformsPage } from "./pages/ConnectedPlatformsPage";
 import { EvaluationLabPage } from "./pages/EvaluationLabPage";
 import { FinOpsPage } from "./pages/FinOpsPage";
 import { GovernancePage } from "./pages/GovernancePage";
@@ -39,6 +40,7 @@ export function App() {
           <Route index element={<MissionControlPage />} />
           <Route path="agents" element={<AgentUniversePage />} />
           <Route path="agents/:id" element={<AgentProfilePage />} />
+          <Route path="platforms" element={<ConnectedPlatformsPage />} />
           <Route path="onboarding" element={<OnboardingStudioPage />} />
           <Route path="workbench" element={<WorkbenchPage />} />
           <Route path="evaluations" element={<EvaluationLabPage />} />

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 from urllib.parse import urljoin
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.connectors.registry import get_connector, list_connector_types
 from app.models.connection import PlatformConnection
 from app.schemas.agent import AgentCreate
+from app.schemas.connector import ConnectorSyncResult
 from app.schemas.onboarding import (
     CatalogSyncRequest,
     CatalogSyncResult,
@@ -21,6 +23,7 @@ from app.schemas.onboarding import (
     OnboardingJobResult,
     ProjectOnboardRequest,
 )
+from app.services import blueprints as blueprint_service
 from app.services import project_ingest
 from app.services import registry as agent_registry
 from app.services.audit import record_audit
@@ -36,6 +39,7 @@ async def create_connection(
     base_url: str,
     secret_ref: str | None = None,
     metadata: dict | None = None,
+    collect_observability: bool = True,
 ) -> PlatformConnection:
     connector = get_connector(connector_type, base_url=base_url or "", secret_ref=secret_ref)
     caps = await connector.get_capabilities()
@@ -48,6 +52,7 @@ async def create_connection(
         secret_ref=secret_ref,
         capabilities=caps.model_dump(),
         status="created",
+        collect_observability=collect_observability,
         metadata_=metadata or {},
     )
     db.add(conn)
@@ -419,26 +424,42 @@ async def register_from_ci(
     """Idempotent post-deploy registration — preferred enterprise onboarding path."""
     conn = await _get_or_create_ci_connection(db, tenant_id=tenant_id, body=body)
     if conn:
-        conn.status = "validated"
+        conn.status = "connected"
         await db.flush()
+
+    bp = await blueprint_service.resolve_blueprint(
+        db,
+        tenant_id=tenant_id,
+        blueprint_id=body.blueprint_id,
+        blueprint_slug=body.blueprint_slug,
+    )
+    platform = bp.connector_type if bp else body.connector_type
+    framework = bp.framework if bp else body.framework
+    domain = body.domain or (bp.default_domain if bp else None)
+    risk = bp.default_risk_class if bp else "medium"
+    meta = _git_meta_from_ci(body)
+    if bp:
+        meta["blueprint_slug"] = bp.slug
 
     agent, created = await agent_registry.upsert_agent_by_external_id(
         db,
         tenant_id=tenant_id,
         data=AgentCreate(
             name=body.name,
-            platform=body.connector_type,
-            framework=body.framework,
+            platform=platform,
+            framework=framework,
             external_id=body.external_id,
             owner=body.owner,
             team=body.team,
-            domain=body.domain,
+            domain=domain,
             environment=body.environment,
             lifecycle_state="registered",
+            risk_class=risk,
             connection_id=conn.id if conn else None,
+            blueprint_id=bp.id if bp else None,
             invoke_url=body.invoke_url,
             description=body.description,
-            metadata=_git_meta_from_ci(body),
+            metadata=meta,
         ),
         actor_id=actor_id,
         actor_email=actor_email,
@@ -457,11 +478,13 @@ async def register_from_ci(
             "git_repo": body.git_repo,
             "git_sha": body.git_sha,
             "pipeline_id": body.pipeline_id,
+            "blueprint_id": str(bp.id) if bp else None,
         },
     )
     return CiRegisterResult(
         agent_id=agent.id,
         connection_id=conn.id if conn else None,
+        blueprint_id=bp.id if bp else None,
         created=created,
         external_id=body.external_id,
         invoke_url=body.invoke_url,
@@ -485,6 +508,15 @@ async def sync_catalog(
         **({"git_ref": body.git_ref} if body.git_ref else {}),
         **({"git_sha": body.git_sha} if body.git_sha else {}),
     }
+
+    bp = await blueprint_service.resolve_blueprint(
+        db,
+        tenant_id=tenant_id,
+        blueprint_id=body.blueprint_id,
+        blueprint_slug=body.blueprint_slug,
+    )
+    if bp:
+        git_meta["blueprint_slug"] = bp.slug
 
     conn = await create_connection(
         db,
@@ -552,10 +584,12 @@ async def sync_catalog(
                     external_id=str(item.get("external_id") or ""),
                     owner=body.owner,
                     team=body.team,
-                    domain=item.get("domain") or body.domain,
+                    domain=item.get("domain") or body.domain or (bp.default_domain if bp else None),
                     environment=body.environment,
                     lifecycle_state="registered",
+                    risk_class=bp.default_risk_class if bp else "medium",
                     connection_id=conn.id,
+                    blueprint_id=bp.id if bp else None,
                     invoke_url=invoke_url,
                     description=item.get("description"),
                     metadata={**git_meta, **(item.get("metadata") or {})},
@@ -568,7 +602,12 @@ async def sync_catalog(
             else:
                 updated.append(agent.id)
 
-        conn.status = "validated"
+        now = datetime.now(timezone.utc)
+        conn.status = "connected"
+        conn.last_synced_at = now
+        conn.last_sync_status = "completed"
+        conn.last_sync_error = None
+        conn.synced_agent_count = len(registered) + len(updated)
         await db.flush()
         await record_audit(
             db,
@@ -595,8 +634,137 @@ async def sync_catalog(
     except Exception as exc:  # noqa: BLE001
         conn.status = "error"
         conn.last_error = str(exc)
+        conn.last_synced_at = datetime.now(timezone.utc)
+        conn.last_sync_status = "failed"
+        conn.last_sync_error = str(exc)
         await db.flush()
         return CatalogSyncResult(
+            connection_id=conn.id,
+            discovered=discovered_dump,
+            registered_agent_ids=registered,
+            updated_agent_ids=updated,
+            status="failed",
+            error=str(exc),
+        )
+
+
+async def sync_connection(
+    db: AsyncSession,
+    *,
+    tenant_id: UUID,
+    connection_id: UUID,
+    actor_id: UUID | None = None,
+    actor_email: str | None = None,
+) -> ConnectorSyncResult:
+    """Agent 365–style manual sync: discover from connected platform → registry upsert."""
+    conn = await db.get(PlatformConnection, connection_id)
+    if conn is None or conn.tenant_id != tenant_id:
+        raise LookupError("Connection not found")
+
+    discovered_dump: list[dict[str, Any]] = []
+    registered: list[UUID] = []
+    updated: list[UUID] = []
+    sync_meta = {"source": "connection_sync", "connection_name": conn.name}
+
+    try:
+        connector = get_connector(
+            conn.connector_type,
+            base_url=_connector_base(conn.base_url),
+            secret_ref=conn.secret_ref,
+        )
+        await connector.authenticate()
+        discovered = await connector.discover_agents()
+        caps = await connector.get_capabilities()
+        conn.capabilities = caps.model_dump()
+        discovered_dump = [d.model_dump() for d in discovered]
+
+        for item in discovered_dump:
+            ext = str(item.get("external_id") or "")
+            if not ext:
+                continue
+            invoke_url = item.get("invoke_url")
+            if not invoke_url:
+                invoke_url = urljoin(conn.base_url.rstrip("/") + "/", f"agents/{ext}/invoke")
+            agent, created = await agent_registry.upsert_agent_by_external_id(
+                db,
+                tenant_id=tenant_id,
+                data=AgentCreate(
+                    name=str(item.get("name") or ext),
+                    platform=conn.connector_type,
+                    framework=str(item.get("framework") or conn.connector_type),
+                    external_id=ext,
+                    domain=item.get("domain"),
+                    environment="dev",
+                    lifecycle_state="registered",
+                    connection_id=conn.id,
+                    invoke_url=invoke_url,
+                    description=item.get("description"),
+                    metadata={**sync_meta, **(item.get("metadata") or {})},
+                ),
+                actor_id=actor_id,
+                actor_email=actor_email,
+            )
+            if created:
+                registered.append(agent.id)
+            else:
+                updated.append(agent.id)
+
+        now = datetime.now(timezone.utc)
+        conn.status = "connected"
+        conn.last_error = None
+        conn.last_synced_at = now
+        conn.last_sync_status = "completed"
+        conn.last_sync_error = None
+        conn.synced_agent_count = len(registered) + len(updated)
+        await db.flush()
+        obs_detail: dict[str, Any] = {}
+        if conn.collect_observability:
+            from app.services import activity as activity_service
+
+            try:
+                obs = await activity_service.collect_platform_telemetry(
+                    db,
+                    tenant_id=tenant_id,
+                    connection_id=conn.id,
+                    actor_id=actor_id,
+                    actor_email=actor_email,
+                )
+                obs_detail = {
+                    "observability_status": obs.status,
+                    "snapshots_upserted": obs.snapshots_upserted,
+                }
+            except Exception as obs_exc:  # noqa: BLE001
+                obs_detail = {"observability_error": str(obs_exc)}
+        await record_audit(
+            db,
+            tenant_id=tenant_id,
+            action="connector.sync",
+            resource_type="platform_connection",
+            resource_id=str(conn.id),
+            actor_id=actor_id,
+            actor_email=actor_email,
+            detail={
+                "discovered": len(discovered_dump),
+                "created": len(registered),
+                "updated": len(updated),
+                **obs_detail,
+            },
+        )
+        return ConnectorSyncResult(
+            connection_id=conn.id,
+            discovered=discovered_dump,
+            registered_agent_ids=registered,
+            updated_agent_ids=updated,
+            status="completed",
+        )
+    except Exception as exc:  # noqa: BLE001
+        conn.status = "error"
+        conn.last_error = str(exc)
+        conn.last_synced_at = datetime.now(timezone.utc)
+        conn.last_sync_status = "failed"
+        conn.last_sync_error = str(exc)
+        await db.flush()
+        return ConnectorSyncResult(
             connection_id=conn.id,
             discovered=discovered_dump,
             registered_agent_ids=registered,

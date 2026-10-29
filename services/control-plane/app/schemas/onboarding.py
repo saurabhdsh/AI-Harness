@@ -86,12 +86,15 @@ class CiRegisterRequest(BaseModel):
     git_commit_url: str | None = None
     pipeline_id: str | None = None
     pipeline_url: str | None = None
+    blueprint_id: UUID | None = None
+    blueprint_slug: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class CiRegisterResult(BaseModel):
     agent_id: UUID
     connection_id: UUID | None = None
+    blueprint_id: UUID | None = None
     created: bool
     external_id: str
     invoke_url: str
@@ -124,6 +127,8 @@ class CatalogSyncRequest(BaseModel):
     git_repo: str | None = None
     git_ref: str | None = None
     git_sha: str | None = None
+    blueprint_id: UUID | None = None
+    blueprint_slug: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

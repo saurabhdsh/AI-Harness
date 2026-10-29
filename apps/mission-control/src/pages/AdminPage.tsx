@@ -308,7 +308,7 @@ export function AdminPage() {
         {connectors.isLoading && <Skeleton className="h-32" />}
         {connectors.isError && <ErrorState error={connectors.error} />}
         {connectors.data && connectors.data.length === 0 && (
-          <EmptyState title="No connectors" body="Create connections via Onboarding Studio." />
+          <EmptyState title="No connectors" body="Connect platforms under Connected Platforms, or use Onboarding Studio." />
         )}
         {connectors.data && connectors.data.length > 0 && (
           <div className="space-y-2">
